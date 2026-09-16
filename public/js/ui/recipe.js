@@ -17,11 +17,12 @@ import {
   formatAmount, formatMinutes, formatYield, formatQty,
   formatDate, relativeDate, todayKey, pluralise,
 } from '../util/format.js';
-import { stars, categoryTag, spinner, iconButton, field, textarea } from './bits.js';
+import { stars, categoryTag, spinner, iconButton, field, textarea, photoPicker, thumb } from './bits.js';
 import { openSheet, confirmSheet, toast } from './sheet.js';
 import { openEditor } from './editor.js';
 import { openCookMode } from './cookmode.js';
 import { covered } from '../util/match.js';
+import { photoUrl } from '../backends/photos.js';
 
 /** Per-recipe view state — scale and what's ticked — kept while the app is open. */
 const sessions = new Map();
@@ -74,10 +75,13 @@ export function renderRecipe(id, { onBack, rerender }) {
 /* ----------------------------------------------------------------- head --- */
 
 function hero(recipe) {
-  if (recipe.image) {
-    return el('div.hero', el('img', { src: recipe.image, alt: recipe.title, decoding: 'async' }));
+  if (!recipe.photoId && !recipe.image) {
+    return el('div.hero', el('div.hero-empty', { text: emojiFor(recipe.category) }));
   }
-  return el('div.hero', el('div.hero-empty', { text: emojiFor(recipe.category) }));
+  const img = el('img', { alt: recipe.title, decoding: 'async' });
+  if (recipe.image) img.src = recipe.image;
+  else photoUrl(recipe.photoId).then((url) => { if (url) img.src = url; }).catch(() => {});
+  return el('div.hero', img);
 }
 
 function head(recipe) {
@@ -245,10 +249,13 @@ export function openCookSheet(recipe, onDone) {
   const noteInput = textarea({ placeholder: 'How did it go? (optional)', rows: 3 });
   const button = el('button.btn.btn-primary', { type: 'button', text: 'Log it' });
 
+  let photoId = null;
+
   const sheet = openSheet({
     title: `Made ${recipe.title}`,
     body: el('div',
       field('When', dateInput),
+      photoPicker({ onChange: (id) => { photoId = id; }, label: 'Add a photo of it' }),
       field('Notes', noteInput)),
     footer: button,
   });
@@ -257,7 +264,11 @@ export function openCookSheet(recipe, onDone) {
     button.disabled = true;
     button.textContent = 'Saving…';
     try {
-      await logCook(recipe.id, { date: dateInput.value || todayKey(), note: noteInput.value.trim() });
+      await logCook(recipe.id, {
+        date: dateInput.value || todayKey(),
+        note: noteInput.value.trim(),
+        photoId,
+      });
       sheet.close();
       toast('Logged. Nice one.');
       onDone?.();
@@ -365,6 +376,7 @@ function cookLog(recipe, rerender) {
   return el('div',
     el('div.section-title', { text: `Made ${pluralise(cooks.length, 'time')}` }),
     el('div.cook-log', cooks.map((cook) => el('div.entry',
+      cook.photoId ? thumb(cook, 'cook-thumb') : null,
       el('div.grow',
         el('div.when', { text: `${formatDate(cook.date, { weekday: true })} · ${relativeDate(cook.date)}` }),
         el('div.by', { text: cook.note ? `${cook.by} — ${cook.note}` : `by ${cook.by}` })),

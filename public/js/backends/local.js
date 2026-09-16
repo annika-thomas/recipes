@@ -6,11 +6,10 @@
  * localStorage, in the same shapes, so a backup taken here opens on a server
  * later and vice versa.
  *
- * Two honest limits, both consequences of there being nowhere to put shared
- * data: your phone and your partner's phone keep separate boxes, and importing
- * from photos or links can't happen, because reading a screenshot needs an API
- * key that can't live in code anyone can view, and fetching a recipe site from
- * a browser is blocked by that site's CORS policy.
+ * The one consequence of there being nowhere shared to put data: this device
+ * and another one keep separate boxes. Backup and restore move recipes across.
+ * Photos are the exception to "one JSON blob" — they live in IndexedDB, which
+ * is sized for them; see backends/photos.js.
  */
 
 import { newId, nowIso, str, text } from '../util/clean.js';
@@ -36,14 +35,6 @@ const LISTS = ['recipes', 'cooks', 'ratings', 'notes', 'pantry'];
  */
 function empty() {
   return { version: 1, recipes: [], cooks: [], ratings: [], notes: [], pantry: [] };
-}
-
-/** Thrown for the things this backend genuinely cannot do. */
-export class UnavailableError extends Error {
-  constructor(message) {
-    super(message);
-    this.status = 501;
-  }
 }
 
 /* ------------------------------------------------------------- the blob --- */
@@ -113,7 +104,7 @@ function full(recipe, data) {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     cooks: data.cooks.filter((c) => c.recipeId === recipe.id)
       .sort((a, b) => b.date.localeCompare(a.date))
-      .map((c) => ({ id: c.id, date: c.date, by: c.by, note: c.note })),
+      .map((c) => ({ id: c.id, date: c.date, by: c.by, note: c.note, photoId: c.photoId || null })),
   };
 }
 
@@ -137,7 +128,6 @@ export const backend = {
     return {
       person,
       configured: true,
-      canImport: false,
       local: false,
       offline: true,
       categories: CATEGORIES,
@@ -176,7 +166,8 @@ export const backend = {
           note: c.note,
           title: recipe?.title || 'A deleted recipe',
           category: recipe?.category || 'mains',
-          image: null,
+          // A cook's own photo if it has one, else the recipe's.
+          photoId: c.photoId || recipe?.photoId || null,
           recipeGone: !recipe,
         };
       }).sort((a, b) => b.date.localeCompare(a.date)),
@@ -205,7 +196,8 @@ export const backend = {
         sourceUrl: input.sourceUrl || null,
         sourceName: str(input.sourceName, 120),
         sourceNote: clean.source_note,
-        image: null,
+        // The picture is a blob in IndexedDB; the recipe only holds its id.
+        photoId: input.photoId === undefined ? undefined : (input.photoId || null),
         updatedAt: ts,
       };
       // The stored shape uses the API's camelCase names, not the SQL ones.
@@ -213,6 +205,9 @@ export const backend = {
       delete fields.prep_min;
       delete fields.cook_min;
       delete fields.source_note;
+
+      // `undefined` means "leave the photo alone"; null means "remove it".
+      if (fields.photoId === undefined) delete fields.photoId;
 
       if (input.id) {
         const existing = find(data, input.id);
@@ -222,6 +217,7 @@ export const backend = {
 
       const recipe = {
         id: newId('r'),
+        photoId: null,
         ...fields,
         addedBy: person || 'me',
         createdAt: ts,
@@ -268,7 +264,7 @@ export const backend = {
     mutate((data) => { data.notes = data.notes.filter((n) => n.id !== noteId); });
   },
 
-  async logCook(id, { date, note }, person) {
+  async logCook(id, { date, note, photoId }, person) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
       throw new Error('A cook needs a date like 2026-09-16.');
     }
@@ -280,6 +276,7 @@ export const backend = {
         date,
         by: person || 'me',
         note: text(note, 500),
+        photoId: photoId || null,
         createdAt: nowIso(),
       });
       return full(find(data, id), data);
@@ -377,28 +374,6 @@ export const backend = {
       .slice(0, 40);
 
     return { suggestions: scored, pantrySize: pantryNorms.length };
-  },
-
-  /* ------------------------------------------------------- not possible --- */
-
-  async importPhotos() {
-    throw new UnavailableError(
-      'Reading photos needs a server — the key that does the reading can’t live in a public web page. '
-      + 'Type the recipe in for now, or put it on a server later and this turns on.',
-    );
-  },
-
-  async importLink() {
-    throw new UnavailableError(
-      "A browser isn't allowed to fetch another site's pages, so importing links needs a server. "
-      + 'Copy the recipe text and use "Paste some text" instead.',
-    );
-  },
-
-  async importText() {
-    throw new UnavailableError(
-      'Reading pasted text into a recipe needs a server. Use "Type it in" — it takes about a minute.',
-    );
   },
 
   /* ---------------------------------------------------------- portability --- */

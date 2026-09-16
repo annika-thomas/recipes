@@ -8,12 +8,12 @@
  */
 
 import { el, svg } from '../util/dom.js';
-import { ICONS, emojiFor } from './icons.js';
+import { ICONS } from './icons.js';
 import { state, cooksByDate } from '../store.js';
 import {
   todayKey, dateKey, fromKey, monthName, DOW_SHORT, formatDate, relativeDate, pluralise,
 } from '../util/format.js';
-import { emptyState } from './bits.js';
+import { emptyState, thumb } from './bits.js';
 
 const view = { year: null, month: null, selected: null };
 
@@ -152,9 +152,7 @@ function cookEntry(cook, onOpen, { showDate = false } = {}) {
     type: 'button',
     onclick: () => { if (!cook.recipeGone) onOpen(cook.recipeId); },
   },
-    cook.image
-      ? el('img', { src: cook.image, alt: '', loading: 'lazy' })
-      : el('div.ph', { text: emojiFor(cook.category) }),
+    thumb(cook, 'ph'),
     el('div.grow',
       el('div', { text: cook.title, style: { fontWeight: '700', fontSize: '15px' } }),
       el('div.tiny.muted', {

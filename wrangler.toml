@@ -24,12 +24,6 @@ database_id = "PASTE_YOUR_DATABASE_ID_HERE"
 binding = "PHOTOS"
 bucket_name = "kitchen-photos"
 
-[vars]
-# Which Claude model does the importing. Opus 5 reads messy screenshots best;
-# "claude-sonnet-5" is cheaper if you import a lot.
-CLAUDE_MODEL = "claude-opus-5"
-
 # Secrets — set with `npx wrangler secret put NAME`, never in this file:
 #   HOUSEHOLD_PASSCODE   the passcode you both type to get in
 #   SESSION_SECRET       random string used to sign the login cookie
-#   ANTHROPIC_API_KEY    from console.anthropic.com, for importing recipes

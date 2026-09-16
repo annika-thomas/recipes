@@ -2,11 +2,12 @@
   "name": "kitchen",
   "version": "1.0.0",
   "private": true,
-  "description": "A shared recipe box for two people \u2014 import from photos, links and reels, cook, rate, and remember.",
+  "description": "A recipe journal \u2014 paste a recipe, cook it, photograph it, and remember what you thought.",
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup-local.mjs",
     "dev": "wrangler dev",
+    "pages": "npx --yes http-server public -p 8099 -c-1 --silent",
     "deploy:setup": "node scripts/deploy.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "deploy": "wrangler deploy",
@@ -15,9 +16,6 @@
     "db:init:local": "wrangler d1 execute kitchen --local --file=./schema.sql",
     "db:reset:local": "wrangler d1 execute kitchen --local --command=\"DROP TABLE IF EXISTS recipes; DROP TABLE IF EXISTS cooks; DROP TABLE IF EXISTS ratings; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS pantry; DROP TABLE IF EXISTS login_attempts;\" && npm run db:init:local",
     "tail": "wrangler tail"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.126.0"
   },
   "devDependencies": {
     "wrangler": "^4.132.0"

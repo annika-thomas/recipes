@@ -7,6 +7,7 @@ import { openSheet, confirmSheet, toast } from './sheet.js';
 import { forgetPerson } from './gate.js';
 import { pluralise } from '../util/format.js';
 import { banner } from './bits.js';
+import { storageEstimate } from '../backends/photos.js';
 
 const THEME_KEY = 'kitchen.theme';
 
@@ -109,15 +110,11 @@ export function renderSettings({ onSignedOut, rerender }) {
 
         el('button.setting', { type: 'button', onclick: () => openAbout(onDevice) },
           el('div.grow',
-            el('h4', { text: onDevice ? 'Adding recipes, and sharing them' : 'How importing works' }),
-            el('p', { text: onDevice ? 'What this copy can do, and what needs a server.' : 'What each kind of link can and cannot give you.' })),
+            el('h4', { text: 'How this works' }),
+            el('p', { text: 'Where your recipes live, and how pasting reads them.' })),
           svg(ICONS.next, { size: 18 }))),
 
-      !onDevice && !state.canImport
-        ? el('p.tiny.muted', { style: { margin: '18px 4px', lineHeight: '1.5' } },
-          'Importing is currently off: the server has no Anthropic API key. '
-          + 'Add one with `npx wrangler secret put ANTHROPIC_API_KEY` and it lights up.')
-        : null,
+      storageLine(),
 
       el('p.tiny.muted', { style: { textAlign: 'center', margin: '30px 0 0' }, text: 'Kitchen' })),
   };
@@ -190,52 +187,50 @@ function openRestore(rerender) {
 
 function openAbout(onDevice) {
   openSheet({
-    title: onDevice ? 'Adding recipes, and sharing them' : 'How importing works',
+    title: 'How this works',
     body: el('div', { style: { lineHeight: '1.6', fontSize: '14.5px' } },
-      onDevice ? deviceParagraphs() : serverParagraphs()),
+      para('Pasting a recipe',
+        'The text is read here in your browser — nothing is sent anywhere and there is no '
+        + 'waiting. It looks for the things recipes always have: quantities and units at the '
+        + 'start of a line, numbered steps, headings like Ingredients and Method. Give it any '
+        + 'of those and it does well; give it a paragraph of prose and it will do its best and '
+        + 'tell you what it could not find.'),
+      para('Why it always opens the form',
+        'Because it is a guess. Quantities and oven temperatures are the parts nobody proofreads '
+        + 'and the parts that ruin dinner, so the parsed recipe is shown to you before it is '
+        + 'saved, with what you pasted kept underneath it.'),
+      para('Photos',
+        'Pictures of the dish are kept on this device, alongside the recipes but in separate '
+        + 'storage sized for them. Each time you cook something you can add a photo of how it '
+        + 'turned out that time — that is what the calendar shows.'),
+      onDevice
+        ? para('Where your recipes are',
+          'In this browser, on this device. Nothing is uploaded and no account exists, which is '
+          + 'why it needs no setup at all — and why clearing this site\u2019s data would take the '
+          + 'recipes with it. Download a backup now and then; opening one on another device '
+          + 'merges rather than overwrites, so you can do it as often as you like.')
+        : para('Where your recipes are',
+          'On your own server, shared between both of you. Anything either of you adds shows up '
+          + 'for the other.')),
   });
 }
 
-function deviceParagraphs() {
-  return [
-    para('Where your recipes are',
-      'In this browser, on this device. Nothing is uploaded and no account exists, which is why '
-      + 'it works with no setup at all — and why clearing this site’s data would take the '
-      + 'recipes with it. Download a backup now and then.'),
-    para('Getting them onto another phone',
-      'Download a backup here, send yourself the file, and use "Open a backup" on the other '
-      + 'device. It merges, so you can do it repeatedly without making duplicates — but the two '
-      + 'devices don’t stay in step on their own. That needs a server.'),
-    para('Why photo and link importing are off',
-      'Reading a screenshot needs an API key, and a key in a public web page is a key anyone can '
-      + 'take and spend. Fetching a recipe site from a browser is blocked by that site. Both work '
-      + 'as soon as there’s a server in the picture; until then, typing a recipe in takes about '
-      + 'a minute and everything else in the app works normally.'),
-    para('Moving to a shared box later',
-      'A backup taken here opens on a server version without changing anything — a recipe is the '
-      + 'same shape in both. Nothing you type in now is wasted.'),
-  ];
-}
+/** How much room the photos are taking, once there are enough to matter. */
+function storageLine() {
+  const line = el('p.tiny.muted', {
+    style: { margin: '16px 4px 0', lineHeight: '1.5' },
+    hidden: true,
+  });
 
-function serverParagraphs() {
-  return [
-    para('Recipe websites',
-      'Nearly every food site publishes its recipes in a machine-readable form so Google can show '
-      + 'recipe cards. When one does, you get it exactly — right quantities, right steps — and no '
-      + 'model is involved at all. When it does not, the page text is read instead.'),
-    para('TikTok, Instagram and YouTube',
-      'These give us the caption or description, not the video. Nobody is watching or transcribing '
-      + 'the footage. When the creator wrote the recipe out — and food creators usually do, so '
-      + 'people can save it — this works well. When the recipe only exists in the voiceover or '
-      + 'on-screen text, the import says so rather than making it up.'),
-    para('Photos',
-      'Anything readable: a cookbook page, a handwritten card, a screenshot of a post. Multiple '
-      + 'photos of one recipe are read together, in order. This is the fallback that always works, '
-      + 'including for reels — screenshot the on-screen steps.'),
-    para('Every import lands in the editor first',
-      "Nothing saves until you've looked at it. Quantities and temperatures are the things worth "
-      + 'checking; a missing one shows as blank rather than a guess.'),
-  ];
+  storageEstimate().then((info) => {
+    if (!info || info.usage < 2_000_000) return;
+    const mb = (n) => `${(n / 1_000_000).toFixed(0)}MB`;
+    line.textContent = `Using ${mb(info.usage)} on this device`
+      + (info.quota ? ` of about ${mb(info.quota)} available.` : '.');
+    line.hidden = false;
+  }).catch(() => {});
+
+  return line;
 }
 
 function para(title, body) {

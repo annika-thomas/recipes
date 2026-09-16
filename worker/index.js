@@ -17,14 +17,13 @@ import {
 import {
   listPantry, addPantryItem, deletePantryItem, clearPantry, seedStaples, suggest, LOCATIONS,
 } from './routes/pantry.js';
-import { importPhoto, importLink, importText } from './routes/import.js';
 import { uploadImage, serveImage } from './routes/images.js';
 
 /** Routes that work signed out: the login itself, and asking who you are. */
 const PUBLIC = new Set(['POST /api/session', 'GET /api/session', 'DELETE /api/session']);
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
     try {
@@ -34,7 +33,7 @@ export default {
         return await serveImage(env, decodeURIComponent(url.pathname.slice(5)));
       }
       if (url.pathname.startsWith('/api/')) {
-        return await api(request, env, ctx, url);
+        return await api(request, env, url);
       }
       return env.ASSETS.fetch(request);
     } catch (err) {
@@ -45,7 +44,7 @@ export default {
   },
 };
 
-async function api(request, env, ctx, url) {
+async function api(request, env, url) {
   const method = request.method.toUpperCase();
   const path = url.pathname.replace(/\/+$/, '') || '/api';
   const route = `${method} ${path}`;
@@ -62,7 +61,6 @@ async function api(request, env, ctx, url) {
       person,
       configured: Boolean(env.HOUSEHOLD_PASSCODE && env.SESSION_SECRET),
       local: isLocal(request),
-      canImport: Boolean(env.ANTHROPIC_API_KEY),
       categories: CATEGORIES,
       locations: LOCATIONS,
     });
@@ -136,11 +134,8 @@ async function api(request, env, ctx, url) {
 
   if (route === 'GET /api/suggest') return suggest(env, url);
 
-  /* ------------------------------------------------------------ imports --- */
+  /* ------------------------------------------------------------- photos --- */
 
-  if (route === 'POST /api/import/photo') return importPhoto(request, env);
-  if (route === 'POST /api/import/link') return importLink(request, env, ctx);
-  if (route === 'POST /api/import/text') return importText(request, env);
   if (route === 'POST /api/images') return uploadImage(request, env);
 
   return error(`No route for ${route}.`, 404);

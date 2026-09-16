@@ -12,14 +12,41 @@ import { el, svg } from '../util/dom.js';
 import { ICONS } from './icons.js';
 import { state, saveRecipe } from '../store.js';
 import { openSheet, toast } from './sheet.js';
-import { field, input, textarea, select, banner } from './bits.js';
+import { field, input, textarea, select, banner, photoPicker } from './bits.js';
 import { formatQty } from '../util/format.js';
+
+/**
+ * What you actually pasted, kept to hand.
+ *
+ * The parser is a guess, and the guess is easier to correct with the original
+ * in front of you than from memory. Collapsed, because most of the time it
+ * got it right and you don't want to scroll past it.
+ */
+function originalBlock(text) {
+  const pre = el('pre', {
+    text,
+    style: {
+      whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '10px 0 0',
+      fontSize: '12.5px', lineHeight: '1.5', color: 'var(--text-2)',
+      background: 'var(--surface-2)', padding: '12px',
+      borderRadius: 'var(--radius-sm)', maxHeight: '260px', overflowY: 'auto',
+    },
+  });
+
+  const details = el('details', { style: { marginTop: '22px' } },
+    el('summary', {
+      text: 'What you pasted',
+      style: { fontSize: '13px', fontWeight: '700', color: 'var(--text-2)', cursor: 'pointer' },
+    }),
+    pre);
+  return details;
+}
 
 /**
  * openEditor({ recipe }) to edit an existing one,
  * openEditor({ draft, warning }) to review an import.
  */
-export function openEditor({ recipe = null, draft = null, warning = null, onSaved } = {}) {
+export function openEditor({ recipe = null, draft = null, warning = null, originalText = null, onSaved } = {}) {
   const source = recipe || draft || {};
   const isNew = !recipe?.id;
 
@@ -37,6 +64,7 @@ export function openEditor({ recipe = null, draft = null, warning = null, onSave
   const cookInput = input({ type: 'number', inputmode: 'numeric', min: '0', value: source.cookMin ?? source.cook_min ?? '', placeholder: '40' });
   const tagsInput = input({ value: (source.tags || []).join(', '), placeholder: 'vegetarian, quick' });
 
+  let photoId = source.photoId ?? null;
   const ingredientsBox = el('div');
   const stepsBox = el('div');
 
@@ -158,7 +186,7 @@ export function openEditor({ recipe = null, draft = null, warning = null, onSave
       sourceUrl: source.sourceUrl || null,
       sourceName: source.sourceName || null,
       sourceNote: source.sourceNote || source.source_note || null,
-      imageKey: source.imageKey || null,
+      photoId,
     };
   }
 
@@ -170,10 +198,11 @@ export function openEditor({ recipe = null, draft = null, warning = null, onSave
     title: isNew ? 'New recipe' : 'Edit recipe',
     body: el('div',
       warning ? banner(warning, 'warn') : null,
-      source.image ? el('img', {
-        src: source.image, alt: '',
-        style: { width: '100%', height: '150px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', marginBottom: '16px' },
-      }) : null,
+      photoPicker({
+        photoId,
+        onChange: (id) => { photoId = id; },
+        label: 'Add a photo of the dish',
+      }),
 
       field('Name', titleInput),
       field('Description', descInput),
@@ -194,12 +223,11 @@ export function openEditor({ recipe = null, draft = null, warning = null, onSave
       el('div.section-title', { text: 'Tags' }),
       tagsInput,
 
-      source.sourceUrl
-        ? el('p.tiny.muted', { style: { marginTop: '18px' } }, 'From ', el('a', {
-          href: source.sourceUrl, target: '_blank', rel: 'noopener noreferrer',
-          text: source.sourceName || source.sourceUrl,
-        }))
-        : null),
+      source.sourceName && !originalText
+        ? el('p.tiny.muted', { style: { marginTop: '18px' }, text: `From ${source.sourceName}` })
+        : null,
+
+      originalText ? originalBlock(originalText) : null),
     footer: saveButton,
   });
 

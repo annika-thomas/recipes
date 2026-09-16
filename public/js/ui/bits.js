@@ -4,6 +4,7 @@ import { el, svg } from '../util/dom.js';
 import { ICONS, emojiFor } from './icons.js';
 import { formatMinutes, relativeDate, pluralise } from '../util/format.js';
 import { state, averageStars } from '../store.js';
+import { photoUrl, putPhoto } from '../backends/photos.js';
 
 /** A row of stars. Interactive when `onPick` is given. */
 export function stars(value, { size = 'small', onPick = null } = {}) {
@@ -37,18 +38,112 @@ export function categoryTag(category) {
   return el('span.tag-cat', { 'data-cat': category, text: categoryLabel(category) });
 }
 
-/** A recipe's thumbnail, or a category emoji when there's no photo. */
-export function thumb(recipe, className = 'recipe-thumb') {
-  if (recipe.image) {
-    return el('img', {
-      class: className,
-      src: recipe.image,
-      alt: '',
-      loading: 'lazy',
-      decoding: 'async',
+/**
+ * A picture of the food, or a category emoji when there isn't one.
+ *
+ * The blob lives in IndexedDB, so the URL arrives a tick later than the render.
+ * The emoji goes up first and is replaced when the photo resolves, which keeps
+ * lists from reflowing and means a missing photo degrades to something
+ * sensible rather than a broken image.
+ */
+export function thumb(record, className = 'recipe-thumb') {
+  const node = el(`div.${className}.recipe-thumb-fallback`, {
+    text: emojiFor(record.category),
+  });
+
+  const id = record.photoId;
+  const direct = record.image;   // a server-hosted photo, when there's a server
+
+  if (!id && !direct) return node;
+
+  const apply = (url) => {
+    if (!url || !node.isConnected) return;
+    node.classList.remove('recipe-thumb-fallback');
+    node.textContent = '';
+    node.style.backgroundImage = `url("${url}")`;
+    node.style.backgroundSize = 'cover';
+    node.style.backgroundPosition = 'center';
+  };
+
+  if (direct) apply(direct);
+  else photoUrl(id).then(apply).catch(() => {});
+
+  return node;
+}
+
+/**
+ * A button that picks a photo, stores it, and hands back its id.
+ * Shows the current one, with a way to remove it.
+ */
+export function photoPicker({ photoId = null, onChange, label = 'Add a photo' } = {}) {
+  const wrap = el('div', { style: { marginBottom: '14px' } });
+  let current = photoId;
+
+  const render = () => {
+    replaceChildren(wrap);
+
+    if (current) {
+      const preview = el('div', {
+        style: {
+          width: '100%', height: '160px', borderRadius: 'var(--radius-sm)',
+          backgroundColor: 'var(--surface-2)', backgroundSize: 'cover',
+          backgroundPosition: 'center', marginBottom: '8px',
+        },
+      });
+      photoUrl(current).then((url) => {
+        if (url) preview.style.backgroundImage = `url("${url}")`;
+      }).catch(() => {});
+
+      wrap.append(preview, el('div.row', { style: { gap: '8px' } },
+        el('button.btn.btn-ghost.grow', { type: 'button', onclick: pick }, 'Change photo'),
+        el('button.btn.btn-ghost', {
+          type: 'button',
+          style: { color: 'var(--danger)' },
+          onclick: () => { current = null; onChange(null); render(); },
+        }, 'Remove')));
+      return;
+    }
+
+    wrap.append(el('button.btn.btn-ghost.btn-block', { type: 'button', onclick: pick },
+      svg(ICONS.camera, { size: 18 }), label));
+  };
+
+  function pick() {
+    const picker = el('input', {
+      type: 'file',
+      accept: 'image/*',
+      // On iOS this offers the camera as well as the library.
+      hidden: true,
     });
+    document.body.append(picker);
+
+    picker.addEventListener('change', async () => {
+      const file = picker.files?.[0];
+      picker.remove();
+      if (!file) return;
+
+      const busy = el('p.tiny.muted', { text: 'Saving that photo…' });
+      replaceChildren(wrap);
+      wrap.append(busy);
+
+      try {
+        current = await putPhoto(file);
+        onChange(current);
+      } catch (err) {
+        wrap.append(el('p.tiny', { text: err.message, style: { color: 'var(--danger)' } }));
+      }
+      render();
+    }, { once: true });
+
+    picker.click();
   }
-  return el(`div.${className}.recipe-thumb-fallback`, { text: emojiFor(recipe.category) });
+
+  render();
+  return wrap;
+}
+
+function replaceChildren(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
 }
 
 /** The line under a recipe title: time · rating · when you last made it. */

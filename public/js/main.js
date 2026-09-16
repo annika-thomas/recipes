@@ -15,7 +15,7 @@ import { renderRecipe } from './ui/recipe.js';
 import { renderCalendar } from './ui/calendar.js';
 import { renderKitchen } from './ui/kitchen.js';
 import { renderSettings, applyStoredTheme } from './ui/settings.js';
-import { openAddSheet, openLinkImport } from './ui/add.js';
+import { openAddSheet, openSharedText } from './ui/add.js';
 import { closeAllSheets, toast } from './ui/sheet.js';
 
 const app = document.getElementById('app');
@@ -34,7 +34,7 @@ function currentRoute() {
   const [name, param] = hash.split('/');
   if (name === 'recipe' && param) return { name: 'recipe', id: param };
   if (TABS.some((t) => t.id === name)) return { name };
-  if (name === 'add') return { name: 'recipes', add: true };
+  if (name === 'add') return { name: 'recipes', add: true };   // home-screen shortcut
   return { name: 'recipes' };
 }
 
@@ -102,6 +102,13 @@ function draw() {
 
   result.focus?.();
   if (pendingFocus) pendingFocus = null;
+
+  // The "Paste a recipe" home-screen shortcut lands on #/add. Open the sheet
+  // once and drop back to the plain route, so a reload doesn't reopen it.
+  if (route.add) {
+    go('recipes', { replaceState: true });
+    openAddSheet({ onSaved: onRecipeSaved });
+  }
 }
 
 function renderRoute(route, screen) {
@@ -156,21 +163,20 @@ function onRecipeSaved(recipe) {
 /* -------------------------------------------------------------- shortcuts --- */
 
 /**
- * ?add=<url> opens the link importer straight away.
+ * ?text=<recipe> opens the paste sheet with it already filled in.
  *
- * This is the hook the iOS Share Sheet shortcut uses: share a reel, the
- * shortcut opens the app with the URL attached, and the import is already
- * running by the time you look at the screen.
+ * This is the hook for an iOS Share Sheet shortcut: select a recipe on a page,
+ * share it to Kitchen, and the text is waiting for you to hit Read it.
  */
 function handleLaunchParams() {
   const params = new URLSearchParams(location.search);
-  const shared = params.get('add') || params.get('url');
+  const shared = params.get('text') || params.get('add');
   if (!shared) return;
 
-  // Strip it so a reload doesn't import the same thing twice.
+  // Strip it so a reload doesn't offer the same paste twice.
   history.replaceState(null, '', location.pathname + location.hash);
 
-  const run = () => openLinkImport(onRecipeSaved, shared);
+  const run = () => openSharedText(onRecipeSaved, shared);
   if (state.person) setTimeout(run, 300);
   else pendingShare = run;
 }

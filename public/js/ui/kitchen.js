@@ -9,12 +9,12 @@
  */
 
 import { el, svg } from '../util/dom.js';
-import { ICONS, emojiFor } from './icons.js';
+import { ICONS } from './icons.js';
 import {
   state, addPantry, removePantry, clearPantry, seedStaples, suggestions,
 } from '../store.js';
 import { openSheet, confirmSheet, toast } from './sheet.js';
-import { emptyState, field, input, select, spinner, banner } from './bits.js';
+import { emptyState, field, input, select, spinner, banner, thumb } from './bits.js';
 import { formatMinutes, relativeDate, pluralise } from '../util/format.js';
 
 const LOCATION_LABELS = {
@@ -270,9 +270,7 @@ function suggestionCard({ recipe, coverage, missing, have, total }, onOpen) {
   const time = formatMinutes((recipe.prepMin || 0) + (recipe.cookMin || 0));
 
   return el('button.recipe-card', { type: 'button', onclick: () => onOpen(recipe.id) },
-    recipe.image
-      ? el('img.recipe-thumb', { src: recipe.image, alt: '', loading: 'lazy' })
-      : el('div.recipe-thumb.recipe-thumb-fallback', { text: emojiFor(recipe.category) }),
+    thumb(recipe),
     el('div.body',
       el('h3', { text: recipe.title }),
       el('div.meta',

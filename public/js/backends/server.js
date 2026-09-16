@@ -94,14 +94,4 @@ export const backend = {
   seedStaples: () => call('/pantry/staples', { method: 'POST' }).then((r) => r.pantry),
 
   suggest: (category) => call(`/suggest${category ? `?category=${encodeURIComponent(category)}` : ''}`),
-
-  importPhotos(files, hint) {
-    const form = new FormData();
-    for (const file of files) form.append('image', file, file.name || 'photo.jpg');
-    if (hint) form.append('hint', hint);
-    return call('/import/photo', { method: 'POST', form });
-  },
-
-  importLink: (url, hint) => call('/import/link', { method: 'POST', body: { url, hint } }),
-  importText: (text, sourceName) => call('/import/text', { method: 'POST', body: { text, sourceName } }),
 };

@@ -20,7 +20,7 @@ class MemoryStorage {
 
 globalThis.localStorage = new MemoryStorage();
 
-const { backend, UnavailableError } = await import('../public/js/backends/local.js');
+const { backend } = await import('../public/js/backends/local.js');
 
 const TODAY = '2026-09-16';
 
@@ -219,17 +219,41 @@ test('a file that is not a backup is refused', () => {
   assert.throws(() => backend.importAll(null), /isn't a Kitchen backup/);
 });
 
-/* ---------------------------------------------------------- what it can't --- */
+/* ------------------------------------------------------------- the photo --- */
 
-test('the importers explain themselves rather than failing obscurely', async () => {
-  for (const fn of ['importPhotos', 'importLink', 'importText']) {
-    await assert.rejects(() => backend[fn](), (err) => {
-      assert.ok(err instanceof UnavailableError, `${fn} should throw UnavailableError`);
-      assert.match(err.message, /server|Type it in/i);
-      return true;
-    });
-  }
+test('a photo id rides along on a recipe and on a cook', async () => {
+  const saved = await backend.saveRecipe({
+    title: 'Dal', ingredients: ['lentils'], steps: ['Simmer.'], photoId: 'ph_dish',
+  }, 'Annika');
+  assert.equal(saved.photoId, 'ph_dish');
+
+  // Saving without mentioning the photo must not wipe it.
+  const edited = await backend.saveRecipe({ ...saved, photoId: undefined, title: 'Good dal' }, 'Annika');
+  assert.equal(edited.photoId, 'ph_dish', 'an edit that ignores the photo keeps it');
+
+  // Explicit null removes it.
+  const cleared = await backend.saveRecipe({ ...saved, photoId: null }, 'Annika');
+  assert.equal(cleared.photoId, null);
+
+  const withCook = await backend.logCook(saved.id, { date: TODAY, photoId: 'ph_cook' }, 'Annika');
+  assert.equal(withCook.cooks[0].photoId, 'ph_cook');
+
+  // The calendar prefers the cook's own photo over the recipe's.
+  const { cooks } = await backend.loadAll();
+  assert.equal(cooks[0].photoId, 'ph_cook');
 });
+
+test('a cook with no photo of its own falls back to the recipe\u2019s', async () => {
+  const saved = await backend.saveRecipe({
+    title: 'Dal', ingredients: ['lentils'], steps: ['Simmer.'], photoId: 'ph_dish',
+  }, 'Annika');
+  await backend.logCook(saved.id, { date: TODAY }, 'Annika');
+
+  const { cooks } = await backend.loadAll();
+  assert.equal(cooks[0].photoId, 'ph_dish');
+});
+
+/* ------------------------------------------------------------- signing in --- */
 
 test('signing in is just a name, and it is remembered', async () => {
   const { person } = await backend.signIn(null, '  Annika  ');
@@ -237,7 +261,6 @@ test('signing in is just a name, and it is remembered', async () => {
 
   const session = await backend.session();
   assert.equal(session.person, 'Annika');
-  assert.equal(session.canImport, false, 'importing is off without a server');
   assert.ok(session.categories.length > 0);
 
   await backend.signOut();

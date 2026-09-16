@@ -12,9 +12,9 @@
  */
 
 import { backend as serverBackend, ApiError } from './backends/server.js';
-import { backend as localBackend, UnavailableError } from './backends/local.js';
+import { backend as localBackend } from './backends/local.js';
 
-export { ApiError, UnavailableError };
+export { ApiError };
 
 const listeners = new Set();
 
@@ -23,7 +23,6 @@ export const state = {
   mode: 'server',      // 'server' | 'local'
   person: null,
   configured: true,
-  canImport: true,
   canShare: true,      // false when the box only exists on this device
   categories: [],
   locations: [],
@@ -91,7 +90,6 @@ export async function loadSession() {
   state.mode = backend.mode;
   state.person = data.person;
   state.configured = data.configured !== false;
-  state.canImport = Boolean(data.canImport);
   state.canShare = backend.mode === 'server';
   state.local = Boolean(data.local);
   state.categories = data.categories || [];
@@ -187,8 +185,8 @@ export async function removeNote(noteId) {
   await backend.deleteNote(noteId);
 }
 
-export async function logCook(id, { date, note }) {
-  const recipe = await backend.logCook(id, { date, note }, state.person);
+export async function logCook(id, { date, note, photoId }) {
+  const recipe = await backend.logCook(id, { date, note, photoId }, state.person);
   mergeRecipe(recipe);
   await reloadCooks();
   return recipe;
@@ -224,12 +222,6 @@ export async function seedStaples() {
 export function suggestions(category) {
   return backend.suggest(category);
 }
-
-/* -------------------------------------------------------------- imports --- */
-
-export function importPhotos(files, hint) { return backend.importPhotos(files, hint); }
-export function importLink(url, hint) { return backend.importLink(url, hint); }
-export function importText(text, sourceName) { return backend.importText(text, sourceName); }
 
 /* ---------------------------------------------------------- portability --- */
 
