@@ -2,21 +2,21 @@
   "name": "Kitchen",
   "short_name": "Kitchen",
   "description": "A shared recipe box — import from photos, links and reels, cook, rate, and remember what you made.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f6f2ea",
   "theme_color": "#f6f2ea",
   "categories": ["food", "lifestyle", "productivity"],
   "icons": [
-    { "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml" },
-    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "./assets/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Add a recipe", "url": "/#/add", "description": "Import from a photo, a link or a reel" },
-    { "name": "What can I make?", "url": "/#/kitchen", "description": "Suggestions from what's in the house" }
+    { "name": "Add a recipe", "url": "./#/add", "description": "Import from a photo, a link or a reel" },
+    { "name": "What can I make?", "url": "./#/kitchen", "description": "Suggestions from what's in the house" }
   ]
 }

@@ -14,30 +14,61 @@ import { openEditor } from './editor.js';
 import { spinner, banner, field, input, textarea } from './bits.js';
 
 export function openAddSheet({ onSaved } = {}) {
+  // With no server there is nothing to read a screenshot or fetch a page, so
+  // those doors are shown closed rather than failing after you've picked a
+  // photo. "Type it in" always works, everywhere.
+  const canRead = state.canImport;
+
   const sheet = openSheet({
     title: 'Add a recipe',
     body: el('div',
-      !state.canImport
-        ? banner('Importing is off — the server has no Anthropic API key yet. Typing one in still works.', 'warn')
-        : null,
+      importNotice(),
 
-      option('camera', 'Photo or screenshot', 'A cookbook page, a recipe card, a screenshot of a post. Several photos of one recipe are fine.',
-        () => { sheet.close(); openPhotoImport(onSaved); }),
+      option('pencil', 'Type it in', 'A family recipe, or something you worked out yourself. Enter jumps to the next ingredient.',
+        () => { sheet.close(); openEditor({ onSaved }); }),
 
-      option('link', 'A link', "A recipe site, or a TikTok, Instagram or YouTube post. It works out which and reads it.",
-        () => { sheet.close(); openLinkImport(onSaved); }),
+      option('camera', 'Photo or screenshot', canRead
+        ? 'A cookbook page, a recipe card, a screenshot of a post. Several photos of one recipe are fine.'
+        : 'Needs a server to read the picture.',
+        () => { sheet.close(); openPhotoImport(onSaved); }, canRead),
 
-      option('text', 'Paste some text', 'Someone sent you the recipe in a message, or you copied a caption.',
-        () => { sheet.close(); openTextImport(onSaved); }),
+      option('link', 'A link', canRead
+        ? 'A recipe site, or a TikTok, Instagram or YouTube post. It works out which and reads it.'
+        : "Needs a server — a browser isn't allowed to fetch other sites.",
+        () => { sheet.close(); openLinkImport(onSaved); }, canRead),
 
-      option('pencil', 'Type it in', 'A family recipe, or something you worked out yourself.',
-        () => { sheet.close(); openEditor({ onSaved }); })),
+      option('text', 'Paste some text', canRead
+        ? 'Someone sent you the recipe in a message, or you copied a caption.'
+        : 'Needs a server to turn the text into a recipe.',
+        () => { sheet.close(); openTextImport(onSaved); }, canRead)),
   });
   return sheet;
 }
 
-function option(icon, title, body, onclick) {
-  return el('button.option', { type: 'button', onclick },
+/** Why the greyed-out options are greyed out, in one line. */
+function importNotice() {
+  if (state.canImport) return null;
+
+  if (state.mode === 'local') {
+    return banner(
+      'This copy keeps recipes on your device, so the three ways of reading a recipe for you '
+      + "are off — they all need a server. Typing one in works, and it's how the box gets started.",
+      'info',
+    );
+  }
+  return banner(
+    'Importing is off — the server has no Anthropic API key yet. Typing recipes in still works.',
+    'warn',
+  );
+}
+
+function option(icon, title, body, onclick, enabled = true) {
+  return el('button.option', {
+    type: 'button',
+    onclick: enabled ? onclick : undefined,
+    disabled: !enabled,
+    style: enabled ? null : { opacity: '.5' },
+  },
     el('div.ico', svg(ICONS[icon], { size: 21 })),
     el('div.grow', el('h4', { text: title }), el('p', { text: body })));
 }

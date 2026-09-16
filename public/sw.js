@@ -10,15 +10,20 @@
 const SHELL = 'kitchen-shell-v1';
 const PHOTOS = 'kitchen-photos-v1';
 
+// Relative to the worker's own scope, so this works at a domain root and
+// under a project path like /recipes/ alike.
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/css/app.css',
-  '/js/main.js',
-  '/manifest.webmanifest',
-  '/assets/icon.svg',
-  '/assets/fonts/figtree-latin.woff2',
+  './',
+  './index.html',
+  './css/app.css',
+  './config.js',
+  './js/main.js',
+  './manifest.webmanifest',
+  './assets/icon.svg',
+  './assets/fonts/figtree-latin.woff2',
 ];
+
+const SHELL_URL = new URL('./index.html', self.registration.scope).pathname;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -69,10 +74,10 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(SHELL).then((cache) => cache.put('/index.html', copy));
+          caches.open(SHELL).then((cache) => cache.put(SHELL_URL, copy));
           return response;
         })
-        .catch(() => caches.match('/index.html')),
+        .catch(() => caches.match(SHELL_URL)),
     );
     return;
   }

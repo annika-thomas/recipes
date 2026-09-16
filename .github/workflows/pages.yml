@@ -1,0 +1,66 @@
+# Publishes the app to GitHub Pages on every push.
+#
+# Only public/ goes up — the Worker, the schema and the tests aren't part of the
+# site. Served this way the app keeps everything on the device, because Pages
+# has no server behind it; the same files deploy to Cloudflare when you want the
+# shared version.
+#
+# Turn it on once at Settings -> Pages -> Source: GitHub Actions.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [claude/recipe-sharing-app-0snh6g, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it midway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The import tests don't need the app's dependencies, and a broken
+      # extractor shouldn't reach the phone in your hand.
+      - name: Run the tests
+        run: npm test
+
+      # Stops Pages running the files through Jekyll, which would drop the
+      # assets folder and anything beginning with an underscore.
+      - name: Add .nojekyll
+        run: touch public/.nojekyll
+
+      # Pages has no API behind it, so say so rather than making every visitor
+      # wait for a request that cannot succeed.
+      - name: Pin the app to device-only storage
+        run: sed -i "s/window.KITCHEN_MODE = 'auto'/window.KITCHEN_MODE = 'local'/" public/config.js
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

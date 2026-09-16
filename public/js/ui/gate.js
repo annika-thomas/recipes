@@ -1,9 +1,10 @@
 /**
  * The way in.
  *
- * One passcode for the household, then you say which of you this phone is —
- * that name is what ends up next to your ratings and on the cook log, so it's
- * worth asking once rather than guessing.
+ * Two shapes, depending on where the recipes live. With a server there's a
+ * household passcode to type, because the box is on the internet and shared.
+ * On a device-only box there's nothing to protect — the data never leaves this
+ * phone — so all that's asked is a name to put on ratings and the cook log.
  */
 
 import { el } from '../util/dom.js';
@@ -12,13 +13,23 @@ import { toast } from './sheet.js';
 
 const REMEMBERED = 'kitchen.person';
 
-export function renderGate(onSignedIn) {
-  let person = '';
+function rememberedName() {
   try {
-    person = localStorage.getItem(REMEMBERED) || '';
+    return localStorage.getItem(REMEMBERED) || '';
   } catch {
-    // Private browsing, or site data blocked. Not remembering a name is fine.
+    // Private browsing, or site data blocked. Not remembering is fine.
+    return '';
   }
+}
+
+function remember(name) {
+  try {
+    localStorage.setItem(REMEMBERED, name);
+  } catch { /* they'll be asked again next time, which is survivable */ }
+}
+
+export function renderGate(onSignedIn) {
+  const onDevice = state.mode === 'local';
 
   const passcodeInput = el('input.input', {
     type: 'password',
@@ -33,18 +44,27 @@ export function renderGate(onSignedIn) {
     autocomplete: 'nickname',
     placeholder: 'Your name',
     'aria-label': 'Your name',
-    value: person,
+    value: rememberedName(),
+    enterkeyhint: 'go',
   });
 
-  const button = el('button.btn.btn-primary.btn-block', { type: 'submit', text: 'Open the kitchen' });
-  const message = el('p.tiny', { style: { color: 'var(--danger)', minHeight: '18px', margin: '10px 0 0' } });
+  const button = el('button.btn.btn-primary.btn-block', {
+    type: 'submit',
+    text: onDevice ? 'Start cooking' : 'Open the kitchen',
+  });
+  const message = el('p.tiny', {
+    style: { color: 'var(--danger)', minHeight: '18px', margin: '10px 0 0' },
+  });
 
   const form = el('form', {
     onsubmit: async (event) => {
       event.preventDefault();
       const name = nameInput.value.trim();
       if (!name) {
-        message.textContent = 'Put your name in so ratings can tell you two apart.';
+        message.textContent = onDevice
+          ? 'A name goes on your ratings and notes.'
+          : 'Put your name in so ratings can tell you two apart.';
+        nameInput.focus();
         return;
       }
 
@@ -54,21 +74,19 @@ export function renderGate(onSignedIn) {
 
       try {
         await signIn(passcodeInput.value, name);
-        try {
-          localStorage.setItem(REMEMBERED, name);
-        } catch { /* nothing to do, and nothing worth saying */ }
+        remember(name);
         onSignedIn();
       } catch (err) {
         message.textContent = err.message;
-        passcodeInput.select();
+        if (!onDevice) passcodeInput.select();
       } finally {
         button.disabled = false;
-        button.textContent = 'Open the kitchen';
+        button.textContent = onDevice ? 'Start cooking' : 'Open the kitchen';
       }
     },
   },
-    passcodeInput,
-    el('div', { style: { height: '10px' } }),
+    onDevice ? null : passcodeInput,
+    onDevice ? null : el('div', { style: { height: '10px' } }),
     nameInput,
     el('div', { style: { height: '16px' } }),
     button,
@@ -79,17 +97,27 @@ export function renderGate(onSignedIn) {
   return el('div.gate',
     el('div.mark', { text: '🍲' }),
     el('h1', { text: 'Kitchen' }),
-    el('p', {
-      text: notConfigured
-        ? (state.local
-          ? 'No passcode set yet. Stop the server, run `npm run setup`, and start it again.'
-          : 'This kitchen has no passcode yet. Set one on the server first — the README has the commands.')
-        : 'The recipes you two keep. Type the passcode you share, and tell it who you are.',
-    }),
-    notConfigured ? null : form);
+    el('p', { text: blurb(onDevice, notConfigured) }),
+    notConfigured ? null : form,
+    onDevice && !notConfigured
+      ? el('p.tiny.muted', { style: { marginTop: '22px', lineHeight: '1.55' } },
+        'Recipes you add are kept on this device. Nothing is uploaded, and nothing is '
+        + 'shared with another phone — Settings explains how to move them.')
+      : null);
 }
 
-/** Used by Settings to switch which person this phone is. */
+function blurb(onDevice, notConfigured) {
+  if (notConfigured) {
+    return state.local
+      ? 'No passcode set yet. Stop the server, run `npm run setup`, and start it again.'
+      : 'This kitchen has no passcode yet. Set one on the server first — the README has the commands.';
+  }
+  return onDevice
+    ? 'Your recipe box, on this phone. What should it call you?'
+    : 'The recipes you two keep. Type the passcode you share, and tell it who you are.';
+}
+
+/** Used by Settings to switch which person this device is. */
 export function forgetPerson() {
   try {
     localStorage.removeItem(REMEMBERED);

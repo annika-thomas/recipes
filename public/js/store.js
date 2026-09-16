@@ -1,20 +1,30 @@
 /**
- * Everything the app knows, and the only place that talks to the server.
+ * Everything the app knows, and the only place that touches storage.
  *
- * Because two phones share one database, the store refuses to get clever about
- * caching: any write refetches, and opening the app or bringing it back to the
- * foreground refetches too. The cost is a round trip; the benefit is that you
- * never add a recipe your partner can't see, or rate one they just deleted.
+ * There are two places a recipe box can live, and the screens don't know or
+ * care which is in use: a server both phones talk to, or this device on its
+ * own. The backend is picked once at boot by asking whether there's an API
+ * behind this page, and every screen calls the same functions either way.
+ *
+ * With a server, the store deliberately refuses to get clever about caching:
+ * any write refetches, and so does returning to the app. The cost is a round
+ * trip; the benefit is that you never add a recipe your partner can't see.
  */
+
+import { backend as serverBackend, ApiError } from './backends/server.js';
+import { backend as localBackend, UnavailableError } from './backends/local.js';
+
+export { ApiError, UnavailableError };
 
 const listeners = new Set();
 
 export const state = {
   ready: false,
+  mode: 'server',      // 'server' | 'local'
   person: null,
   configured: true,
-  local: false,
   canImport: true,
+  canShare: true,      // false when the box only exists on this device
   categories: [],
   locations: [],
   recipes: [],
@@ -23,6 +33,8 @@ export const state = {
   loading: false,
   error: null,
 };
+
+let backend = serverBackend;
 
 export function subscribe(fn) {
   listeners.add(fn);
@@ -33,54 +45,55 @@ function emit() {
   for (const fn of listeners) fn(state);
 }
 
-/* ------------------------------------------------------------- transport --- */
+/* --------------------------------------------------------- which backend --- */
 
-class ApiError extends Error {
-  constructor(message, status, body) {
-    super(message);
-    this.status = status;
-    this.body = body || {};
-  }
-}
-export { ApiError };
+/**
+ * Is there a server behind this page?
+ *
+ * Asking is more reliable than guessing from the hostname: the same files are
+ * served by the Worker, by GitHub Pages, and by `npm run dev`. A 404 (Pages
+ * has no /api), HTML instead of JSON, or no response at all all mean the same
+ * thing — we're on our own, so use the device.
+ */
+async function pickBackend() {
+  // config.js can settle it without a request. On GitHub Pages that matters:
+  // probing there is a guaranteed failure, and on a slow phone connection the
+  // app would sit blank waiting for it.
+  if (window.KITCHEN_MODE === 'local') return localBackend;
 
-async function call(path, { method = 'GET', body, form } = {}) {
-  const init = { method, credentials: 'same-origin', headers: {} };
-
-  if (form) {
-    init.body = form; // let the browser set the multipart boundary
-  } else if (body !== undefined) {
-    init.headers['content-type'] = 'application/json';
-    init.body = JSON.stringify(body);
-  }
-
-  let response;
   try {
-    response = await fetch(`/api${path}`, init);
+    const response = await fetch(new URL('api/session', document.baseURI), {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+      // Never let the question of which backend to use hold up the app.
+      signal: AbortSignal.timeout?.(3000),
+    });
+    if (!response.ok) return localBackend;
+    if (!/application\/json/i.test(response.headers.get('content-type') || '')) return localBackend;
+
+    // Parse it here so the session request isn't made twice.
+    const data = await response.json();
+    serverBackend.primedSession = data;
+    return serverBackend;
   } catch {
-    throw new ApiError("Can't reach the kitchen — check your signal.", 0);
+    return localBackend;
   }
-
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      state.person = null;
-      emit();
-    }
-    throw new ApiError(payload.error || `Something went wrong (${response.status}).`, response.status, payload);
-  }
-  return payload;
 }
 
 /* -------------------------------------------------------------- session --- */
 
 export async function loadSession() {
-  const data = await call('/session');
+  backend = await pickBackend();
+
+  const data = backend.primedSession || await backend.session();
+  delete backend.primedSession;
+
+  state.mode = backend.mode;
   state.person = data.person;
-  state.configured = data.configured;
+  state.configured = data.configured !== false;
+  state.canImport = Boolean(data.canImport);
+  state.canShare = backend.mode === 'server';
   state.local = Boolean(data.local);
-  state.canImport = data.canImport;
   state.categories = data.categories || [];
   state.locations = data.locations || [];
   emit();
@@ -88,7 +101,7 @@ export async function loadSession() {
 }
 
 export async function signIn(passcode, person) {
-  const data = await call('/session', { method: 'POST', body: { passcode, person } });
+  const data = await backend.signIn(passcode, person);
   state.person = data.person;
   emit();
   await refresh();
@@ -96,7 +109,7 @@ export async function signIn(passcode, person) {
 }
 
 export async function signOut() {
-  await call('/session', { method: 'DELETE' });
+  await backend.signOut();
   state.person = null;
   state.recipes = [];
   state.cooks = [];
@@ -113,12 +126,10 @@ export async function refresh() {
   emit();
 
   try {
-    const [recipes, cooks, pantry] = await Promise.all([
-      call('/recipes'), call('/cooks'), call('/pantry'),
-    ]);
-    state.recipes = recipes.recipes || [];
-    state.cooks = cooks.cooks || [];
-    state.pantry = pantry.pantry || [];
+    const { recipes, cooks, pantry } = await backend.loadAll();
+    state.recipes = recipes;
+    state.cooks = cooks;
+    state.pantry = pantry;
     state.ready = true;
   } catch (err) {
     state.error = err.message;
@@ -143,104 +154,106 @@ function mergeRecipe(recipe) {
   return recipe;
 }
 
+async function reloadCooks() {
+  const { cooks } = await backend.loadAll();
+  state.cooks = cooks;
+  emit();
+}
+
 export async function fetchRecipe(id) {
-  const { recipe } = await call(`/recipes/${id}`);
-  return mergeRecipe(recipe);
+  return mergeRecipe(await backend.getRecipe(id));
 }
 
 export async function saveRecipe(recipe) {
-  const { recipe: saved } = recipe.id
-    ? await call(`/recipes/${recipe.id}`, { method: 'PUT', body: recipe })
-    : await call('/recipes', { method: 'POST', body: recipe });
-  mergeRecipe(saved);
-  return saved;
+  return mergeRecipe(await backend.saveRecipe(recipe, state.person));
 }
 
 export async function removeRecipe(id) {
-  await call(`/recipes/${id}`, { method: 'DELETE' });
+  await backend.deleteRecipe(id);
   state.recipes = state.recipes.filter((r) => r.id !== id);
   emit();
   await reloadCooks();
 }
 
 export async function rate(id, stars) {
-  const { recipe } = await call(`/recipes/${id}/rating`, { method: 'PUT', body: { stars } });
-  return mergeRecipe(recipe);
+  return mergeRecipe(await backend.rate(id, stars, state.person));
 }
 
 export async function addNote(id, body) {
-  const { recipe } = await call(`/recipes/${id}/notes`, { method: 'POST', body: { body } });
-  return mergeRecipe(recipe);
+  return mergeRecipe(await backend.addNote(id, body, state.person));
 }
 
 export async function removeNote(noteId) {
-  await call(`/notes/${noteId}`, { method: 'DELETE' });
+  await backend.deleteNote(noteId);
 }
 
 export async function logCook(id, { date, note }) {
-  const { recipe } = await call(`/recipes/${id}/cooks`, { method: 'POST', body: { date, note } });
+  const recipe = await backend.logCook(id, { date, note }, state.person);
   mergeRecipe(recipe);
   await reloadCooks();
   return recipe;
 }
 
 export async function removeCook(cookId) {
-  await call(`/cooks/${cookId}`, { method: 'DELETE' });
+  await backend.deleteCook(cookId);
   await reloadCooks();
 }
 
-async function reloadCooks() {
-  const { cooks } = await call('/cooks');
-  state.cooks = cooks || [];
-  emit();
-}
-
-/* ------------------------------------------------------------- pantry --- */
+/* --------------------------------------------------------------- pantry --- */
 
 export async function addPantry(item) {
-  const { pantry } = await call('/pantry', { method: 'POST', body: item });
-  state.pantry = pantry || [];
+  state.pantry = await backend.addPantry(item, state.person);
   emit();
 }
 
 export async function removePantry(id) {
-  const { pantry } = await call(`/pantry/${id}`, { method: 'DELETE' });
-  state.pantry = pantry || [];
+  state.pantry = await backend.deletePantry(id);
   emit();
 }
 
 export async function clearPantry() {
-  const { pantry } = await call('/pantry', { method: 'DELETE' });
-  state.pantry = pantry || [];
+  state.pantry = await backend.clearPantry();
   emit();
 }
 
 export async function seedStaples() {
-  const { pantry } = await call('/pantry/staples', { method: 'POST' });
-  state.pantry = pantry || [];
+  state.pantry = await backend.seedStaples(state.person);
   emit();
 }
 
-export async function suggestions(category) {
-  const query = category ? `?category=${encodeURIComponent(category)}` : '';
-  return call(`/suggest${query}`);
+export function suggestions(category) {
+  return backend.suggest(category);
 }
 
-/* ------------------------------------------------------------- imports --- */
+/* -------------------------------------------------------------- imports --- */
 
-export async function importPhotos(files, hint) {
-  const form = new FormData();
-  for (const file of files) form.append('image', file, file.name || 'photo.jpg');
-  if (hint) form.append('hint', hint);
-  return call('/import/photo', { method: 'POST', form });
+export function importPhotos(files, hint) { return backend.importPhotos(files, hint); }
+export function importLink(url, hint) { return backend.importLink(url, hint); }
+export function importText(text, sourceName) { return backend.importText(text, sourceName); }
+
+/* ---------------------------------------------------------- portability --- */
+
+/**
+ * A backup is the same JSON in both modes, which is what makes moving from a
+ * device-only box to a shared one a file rather than a rewrite.
+ */
+export function exportData() {
+  if (backend.exportAll) return backend.exportAll();
+  return {
+    exportedAt: new Date().toISOString(),
+    recipes: state.recipes,
+    cooks: state.cooks,
+    pantry: state.pantry,
+  };
 }
 
-export async function importLink(url, hint) {
-  return call('/import/link', { method: 'POST', body: { url, hint } });
-}
-
-export async function importText(text, sourceName) {
-  return call('/import/text', { method: 'POST', body: { text, sourceName } });
+export async function importData(parsed) {
+  if (!backend.importAll) {
+    throw new Error('Restoring into a shared kitchen isn’t supported yet — add the recipes by hand.');
+  }
+  const result = backend.importAll(parsed);
+  await refresh();
+  return result;
 }
 
 /* -------------------------------------------------------------- derived --- */

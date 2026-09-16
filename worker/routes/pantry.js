@@ -8,15 +8,9 @@
 import { json, readJson, newId, nowIso, str, HttpError } from '../lib/http.js';
 import { normaliseIngredientName, covered, rowToRecipe } from '../lib/recipeSchema.js';
 
-export const LOCATIONS = ['fridge', 'freezer', 'pantry', 'spices'];
-
-/**
- * Things nobody wants to tick off a list to get a sensible suggestion. They're
- * seeded as staples on first run and can be deleted like anything else.
- */
-const DEFAULT_STAPLES = [
-  'salt', 'pepper', 'olive oil', 'water', 'butter', 'sugar', 'flour',
-];
+// Shared with the browser, which needs the same list when it runs serverless.
+export { LOCATIONS } from '../../public/js/util/recipe.js';
+import { DEFAULT_STAPLES } from '../../public/js/util/recipe.js';
 
 export async function listPantry(env) {
   const { results } = await env.DB.prepare('SELECT * FROM pantry ORDER BY location, name').all();

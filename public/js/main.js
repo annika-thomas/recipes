@@ -193,7 +193,9 @@ let wasSignedIn = false;
 subscribe((next) => {
   if (wasSignedIn && !next.person) {
     closeAllSheets();
-    toast('Signed out — type the passcode again.', { bad: true });
+    toast(state.mode === 'local'
+      ? 'Tell it who you are again.'
+      : 'Signed out — type the passcode again.', { bad: true });
     draw();
   }
   wasSignedIn = Boolean(next.person);
@@ -241,6 +243,6 @@ document.addEventListener('visibilitychange', async () => {
 
   if ('serviceWorker' in navigator) {
     // Registered after first paint so it never delays the app appearing.
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 })();

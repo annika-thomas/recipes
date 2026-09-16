@@ -6,14 +6,14 @@ when, what you thought of it, and what you've got in the house.
 
 ![The recipe list, a recipe, and the calendar of what got cooked](assets/screenshot.png)
 
-Unlike the workouts and personal-assistant apps, this one has a server. It has
-to: two phones looking at the same recipes need somewhere to keep them, and
-reading a screenshot or fetching a recipe site is something a browser can't do
-on its own.
+It runs two ways, from one codebase. On **GitHub Pages** it's a self-contained
+app that keeps your recipes on your device — one switch to turn on, no accounts,
+and it's the fastest way to have it in your hand. On **Cloudflare's free tier**
+it gains the things that need a server: one box shared between two phones, and
+importing recipes from photos, links and reels.
 
-It runs on your own machine first — four commands, no account, nothing to sign
-up for — and the same code deploys to Cloudflare's free tier when you're ready
-to put it on both phones.
+The app works out which it is at boot, so the same files do both, and a backup
+from one opens in the other.
 
 ---
 
@@ -55,11 +55,54 @@ Opening the app refreshes it, and so does coming back to it after a while.
 
 ---
 
+## Getting it onto your phone
+
+There are two ways to run this, and they are genuinely different apps in one
+codebase. Start with the first; the second is there when you want it.
+
+### The quick way — GitHub Pages, no accounts
+
+Push the branch and turn Pages on:
+
+**Settings → Pages → Source: GitHub Actions.** That's it.
+
+A minute later the app is live at `https://<you>.github.io/recipes/`. Open it on
+your phone, add it to your home screen, and start adding recipes. No Cloudflare,
+no API key, nothing to sign up for.
+
+What you get: the whole app. Adding recipes, categories, search, scaling, cook
+mode, ratings, notes, the cooked-on calendar, the kitchen list and *what can I
+make*. All of it runs in the browser.
+
+What you don't:
+
+- **Your phone and your partner's are separate boxes.** There's no server, so
+  there's nowhere shared to put the recipes. Settings → *Download a backup* and
+  *Open a backup* move them across, and restoring merges rather than
+  overwriting — but the two don't stay in step by themselves.
+- **No importing from photos, links or reels.** Reading a screenshot needs an
+  API key, and a key in a public web page is a key anyone can take and spend.
+  Fetching a recipe site from a browser is blocked by that site. Both light up
+  the moment there's a server. Typing a recipe in takes about a minute.
+
+Recipes live in this browser's storage, so clearing site data would take them
+with it. Take a backup occasionally.
+
+### The full way — Cloudflare, shared between you
+
+Everything above, plus both phones seeing one box and all four import paths.
+Needs a free Cloudflare account. See [Going live on both phones](#going-live-on-both-phones).
+
+**Nothing you do now is wasted.** A backup taken from the Pages version opens on
+the server version unchanged — a recipe is the same shape in both, and the app
+picks which storage to use at boot by asking whether there's an API behind it.
+
+---
+
 ## Run it on your laptop
 
-Start here. A local run needs **no Cloudflare account and no API key** — it's
-all on your machine, and it's the right place to shape the app before either
-phone is involved.
+Useful while you're changing things, and it gives you the *full* app —
+importing included — without deploying anything.
 
 You need [Node 18 or newer](https://nodejs.org).
 
@@ -76,10 +119,6 @@ npm run dev       # http://localhost:8787
 a generated cookie-signing secret, then builds a local SQLite copy of the
 schema. It won't overwrite that file if it already exists, so a key you put
 there by hand survives re-running it.
-
-Open <http://localhost:8787>, type your passcode, put your name in. Adding
-recipes by hand works immediately, and so does the calendar, ratings, notes and
-the whole kitchen tab.
 
 ### Turning importing on locally
 
@@ -99,26 +138,29 @@ it's free and it's the path you'll use most.
 
 - `npm run dev` reloads on save. The browser holds a service worker, so if the
   UI looks stale after an edit, hard-reload once (⌘⇧R).
-- `npm test` runs the import tests: the JSON-LD extractor against the shapes
-  real recipe sites emit, the ingredient matcher, and the normalisation between
-  an import and the database. Those are the parts that rot quietly — when they
-  break you get a recipe with no steps rather than an error — so they're worth
-  re-running if you touch anything under `worker/extract/`.
+- `npm test` runs the tests: the device-only storage backend, the JSON-LD
+  extractor against the shapes real recipe sites emit, the ingredient matcher,
+  and the normalisation between an import and storage. Those are the parts that
+  rot quietly — when they break you get a recipe with no steps rather than an
+  error.
 - `npm run db:reset:local` empties the local database when you've filled it with
   junk while poking at it.
-- Deleting the `.wrangler/` folder resets local state completely.
+- Deleting the `.wrangler/` folder resets local server state completely.
+- To see the *Pages* version instead, serve the folder statically:
+  `npx http-server public -p 8099` and open it. With no API behind it, the app
+  switches to device storage on its own.
 
 ### Where the things you'll want to change live
 
 | To change | Edit |
 | --- | --- |
 | Colours, spacing, the whole look | `public/css/app.css` — the `:root` block at the top is the palette, and the dark theme mirrors it |
-| The categories | `CATEGORIES` in `worker/lib/recipeSchema.js`, and the matching emoji in `public/js/ui/icons.js` |
-| Which staples "add the usual" adds | `DEFAULT_STAPLES` in `worker/routes/pantry.js` |
+| The categories | `CATEGORIES` in `public/js/util/recipe.js` (shared by both halves), and the matching emoji in `public/js/ui/icons.js` |
+| Which staples "add the usual" adds | `DEFAULT_STAPLES` in `public/js/util/recipe.js` |
 | How recipes are sorted by default | `SORTS` and `sortRecipes` in `public/js/ui/library.js` |
 | What the importer is told to do | The `SYSTEM` prompt in `worker/lib/claude.js` |
 | Which model reads imports | `CLAUDE_MODEL` in `wrangler.toml` |
-| Storage locations (fridge, freezer…) | `LOCATIONS` in `worker/routes/pantry.js` |
+| Storage locations (fridge, freezer…) | `LOCATIONS` in `public/js/util/recipe.js` |
 
 One caution: if you rename a **category id** after you've already saved recipes
 under it, those recipes keep the old id and fall back to showing as Mains.
@@ -132,13 +174,11 @@ put real recipes in.
 Do this once the app is how you want it. About ten minutes, and it needs a free
 [Cloudflare account](https://dash.cloudflare.com/sign-up) — no card, no plan.
 
-> **GitHub Pages can't host this one.** Pages serves static files with no server
-> behind them, and this app's whole `/api` layer *is* a server — the shared
-> database, reading screenshots, fetching recipe sites. On Pages the sign-in
-> screen would load and then reject your passcode, because there's nothing to
-> check it. The workouts and personal-assistant apps live on Pages happily
-> because they keep everything in `localStorage` on one device, which is exactly
-> why those two don't sync between devices.
+> Already running the [GitHub Pages version](#the-quick-way--github-pages-no-accounts)?
+> This is the upgrade. Pages can serve the app but not a server, so it can't
+> share a box between two phones or read a screenshot for you — that's the whole
+> difference. Take a backup from Settings first and open it here once you're up;
+> the format is identical.
 
 Nothing from your local run carries over: the deployed app gets its own empty
 database. If you've already typed in recipes you want to keep, take
@@ -208,6 +248,8 @@ would be readable.
 If you want a real wall in front of it, Cloudflare Access (free for up to 50
 users) can sit on the Worker and require a login link to your two email
 addresses before the app even loads. Not necessary; available if you'd rather.
+
+---
 
 ---
 
@@ -333,8 +375,13 @@ Twenty imports a month is well under a dollar either way.
 
 ## Where the data lives
 
-One D1 database and one R2 bucket, both in your own Cloudflare account. Nothing
-is shared with anyone else and there's no third party holding your recipes.
+**On GitHub Pages:** in your browser's storage on that device, under
+`kitchen.v1`. Nothing is uploaded and no account exists. Clearing the site's
+data would take the recipes with it, so take a backup now and then.
+
+**On Cloudflare:** one D1 database and one R2 bucket, both in your own account.
+Nothing is shared with anyone else and there's no third party holding your
+recipes.
 
 Photos and caption text are sent to the Anthropic API at the moment you import
 something, in order to be read. Nothing else leaves — your ratings, notes and
@@ -362,9 +409,13 @@ worker/                 the server: one Cloudflare Worker
   routes/               recipes, cooks, ratings, notes, pantry, imports, images
 
 public/                 the app: a static PWA, no build step
-  js/store.js           all server traffic and all client state
-  js/ui/                one file per screen
-  js/util/match.js      ingredient matching — imported by BOTH halves, so the
+  config.js             which storage this copy uses; the Pages build pins it
+  js/store.js           all app state, and the choice of backend
+  js/backends/local.js  the whole box in localStorage — what Pages runs
+  js/backends/server.js the same surface, over HTTP — what Cloudflare runs
+  js/ui/                one file per screen, unaware of which backend is live
+  js/util/recipe.js     what a recipe IS — imported by both halves
+  js/util/match.js      ingredient matching — imported by both halves, so the
                         app and the server can never disagree about what you have
 
 schema.sql              the database
