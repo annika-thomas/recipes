@@ -13,6 +13,7 @@ import { recipeFromJsonLd } from '../worker/extract/jsonld.js';
 import { readableText, meta, pageTitle, parseUrl } from '../worker/extract/page.js';
 import { socialPlatform, captionLooksThin } from '../worker/extract/social.js';
 import { normaliseRecipe, coerceCategory } from '../worker/lib/recipeSchema.js';
+import { safeUrl } from '../worker/lib/http.js';
 import { normalise, covered } from '../public/js/util/match.js';
 
 const page = (jsonLd) =>
@@ -276,4 +277,26 @@ test('covered matches a cupboard against a recipe both ways round', () => {
 
 test('covered matches when the cupboard is more specific than the recipe', () => {
   assert.equal(covered('chicken', ['chicken thigh']), true);
+});
+
+/* ------------------------------------------------------------ link safety --- */
+
+test('safeUrl keeps http(s) and drops anything that could execute', () => {
+  assert.equal(safeUrl('https://example.com/recipe'), 'https://example.com/recipe');
+  assert.equal(safeUrl('http://example.com/recipe'), 'http://example.com/recipe');
+
+  // These would otherwise be rendered as an href on the recipe page.
+  for (const bad of [
+    'javascript:alert(1)',
+    'JavaScript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    'file:///etc/passwd',
+    'not a url at all',
+    '',
+    null,
+    undefined,
+  ]) {
+    assert.equal(safeUrl(bad), null, `should have rejected ${JSON.stringify(bad)}`);
+  }
 });

@@ -192,10 +192,18 @@ Every later change is one `npm run deploy`.
 ### Keeping it to yourselves
 
 The URL is public — anyone who has it gets the sign-in screen, and the passcode
-is what stops them going further. Two things worth doing:
+is what stops them going further.
 
-- Pick a passcode that isn't guessable in a few tries.
-- The page is marked `noindex`, so it won't turn up in a search.
+Guessing is rate-limited: ten wrong passcodes from one address inside fifteen
+minutes locks that address out for fifteen, which is unlimited typos in practice
+and takes brute force from minutes to centuries. The page is also marked
+`noindex`, so it won't turn up in a search. Still pick a passcode that isn't the
+first thing someone would try.
+
+One thing to know: photos are served from unguessable URLs but without a
+login check, because an `<img>` tag can't reliably send credentials everywhere.
+Nobody can find them without the link, but a photo URL pasted somewhere public
+would be readable.
 
 If you want a real wall in front of it, Cloudflare Access (free for up to 50
 users) can sit on the Worker and require a login link to your two email

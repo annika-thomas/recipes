@@ -8,6 +8,7 @@
 
 import { json, error, HttpError } from './lib/http.js';
 import { signIn, signOutCookie, currentPerson, requirePerson, isLocal } from './lib/auth.js';
+import { assertNotLockedOut, recordFailure, clearFailures } from './lib/loginLimit.js';
 import { CATEGORIES } from './lib/recipeSchema.js';
 import {
   listRecipes, getRecipe, createRecipe, updateRecipe, deleteRecipe,
@@ -69,8 +70,20 @@ async function api(request, env, ctx, url) {
 
   if (route === 'POST /api/session') {
     const body = await request.json().catch(() => ({}));
-    const { person, cookie } = await signIn(env, body.passcode, body.person, { local: isLocal(request) });
-    return json({ person }, 200, { 'set-cookie': cookie });
+    const ip = await assertNotLockedOut(request, env);
+
+    let session;
+    try {
+      session = await signIn(env, body.passcode, body.person, { local: isLocal(request) });
+    } catch (err) {
+      // Only a wrong passcode counts. A missing secret is our fault, not theirs,
+      // and shouldn't lock anyone out of an app that isn't set up yet.
+      if (err instanceof HttpError && err.status === 401) await recordFailure(env, ip);
+      throw err;
+    }
+
+    await clearFailures(env, ip);
+    return json({ person: session.person }, 200, { 'set-cookie': session.cookie });
   }
 
   if (route === 'DELETE /api/session') {

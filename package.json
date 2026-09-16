@@ -12,7 +12,7 @@
     "db:create": "wrangler d1 create kitchen",
     "db:init": "wrangler d1 execute kitchen --remote --file=./schema.sql",
     "db:init:local": "wrangler d1 execute kitchen --local --file=./schema.sql",
-    "db:reset:local": "wrangler d1 execute kitchen --local --command=\"DROP TABLE IF EXISTS recipes; DROP TABLE IF EXISTS cooks; DROP TABLE IF EXISTS ratings; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS pantry;\" && npm run db:init:local",
+    "db:reset:local": "wrangler d1 execute kitchen --local --command=\"DROP TABLE IF EXISTS recipes; DROP TABLE IF EXISTS cooks; DROP TABLE IF EXISTS ratings; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS pantry; DROP TABLE IF EXISTS login_attempts;\" && npm run db:init:local",
     "tail": "wrangler tail"
   },
   "dependencies": {

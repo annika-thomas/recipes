@@ -78,3 +78,13 @@ CREATE TABLE IF NOT EXISTS pantry (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pantry_norm ON pantry (norm);
+
+-- Failed sign-in attempts, so a public URL with a shared passcode can't just be
+-- guessed at. Rows are per-IP and short-lived: a success or a lapsed window
+-- clears them, so this never grows.
+CREATE TABLE IF NOT EXISTS login_attempts (
+  ip           TEXT PRIMARY KEY,
+  fails        INTEGER NOT NULL DEFAULT 0,
+  window_start TEXT NOT NULL,
+  locked_until TEXT
+);

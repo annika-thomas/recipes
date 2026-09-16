@@ -55,6 +55,25 @@ export function text(value, max = 8000) {
   return s.slice(0, max);
 }
 
+/**
+ * A link we're willing to render as an href later.
+ *
+ * Anything that isn't http(s) becomes null — `javascript:` in a source URL
+ * would otherwise run when someone taps "From <site>" on the recipe. Imports
+ * already go through parseUrl, but the editor and the API can set this field
+ * directly, so the check belongs here where every write passes through.
+ */
+export function safeUrl(value, max = 1000) {
+  const s = str(value, max);
+  if (!s) return null;
+  try {
+    const url = new URL(s);
+    return (url.protocol === 'http:' || url.protocol === 'https:') ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 export function num(value, { min = -Infinity, max = Infinity } = {}) {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);

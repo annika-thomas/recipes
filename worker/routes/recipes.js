@@ -1,6 +1,6 @@
 /** Recipes, plus the things that hang off them: cooks, ratings, notes. */
 
-import { json, readJson, newId, nowIso, str, text, HttpError } from '../lib/http.js';
+import { json, readJson, newId, nowIso, str, text, safeUrl, HttpError } from '../lib/http.js';
 import { normaliseRecipe, rowToRecipe, SOURCE_TYPES } from '../lib/recipeSchema.js';
 
 const LIVE = 'deleted_at IS NULL';
@@ -66,7 +66,7 @@ function sourceFields(body) {
   const type = SOURCE_TYPES.includes(body.sourceType) ? body.sourceType : 'manual';
   return {
     source_type: type,
-    source_url: str(body.sourceUrl, 1000),
+    source_url: safeUrl(body.sourceUrl),
     source_name: str(body.sourceName, 120),
     image_key: str(body.imageKey, 200),
   };
