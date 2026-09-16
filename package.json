@@ -1,0 +1,22 @@
+{
+  "name": "kitchen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A shared recipe box for two people \u2014 import from photos, links and reels, cook, rate, and remember.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create kitchen",
+    "db:init": "wrangler d1 execute kitchen --remote --file=./schema.sql",
+    "db:init:local": "wrangler d1 execute kitchen --local --file=./schema.sql",
+    "tail": "wrangler tail",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.132.0"
+  }
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Kitchen">
+  <rect width="512" height="512" rx="114" fill="#f6f2ea"/>
+  <g fill="none" stroke="#c85f3c" stroke-width="26" stroke-linecap="round">
+    <path d="M196 116c-18 22-18 40 0 62s18 40 0 62"/>
+    <path d="M256 104c-18 22-18 40 0 62s18 40 0 62"/>
+    <path d="M316 116c-18 22-18 40 0 62s18 40 0 62"/>
+  </g>
+  <path d="M104 296h304c0 76-50 124-116 132v20a14 14 0 0 1-14 14h-44a14 14 0 0 1-14-14v-20c-66-8-116-56-116-132z"
+        fill="#c85f3c"/>
+  <path d="M92 296h328" stroke="#a44a2c" stroke-width="30" stroke-linecap="round"/>
+</svg>
