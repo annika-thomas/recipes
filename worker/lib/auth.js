@@ -76,14 +76,34 @@ function readCookie(request, name) {
   return null;
 }
 
+/**
+ * Is this a `wrangler dev` session on this machine?
+ *
+ * It decides two things: which half of the setup instructions to quote when a
+ * secret is missing, and whether the cookie is marked Secure. Safari drops a
+ * Secure cookie sent over plain http, which would make signing in on localhost
+ * silently fail to stick — so on a local origin we leave the flag off and set
+ * it everywhere else.
+ */
+export function isLocal(request) {
+  const { hostname, protocol } = new URL(request.url);
+  return protocol === 'http:'
+    && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]');
+}
+
+function cookieParts(local) {
+  return ['Path=/', 'HttpOnly', local ? null : 'Secure', 'SameSite=Lax'].filter(Boolean);
+}
+
 /** Sign in with the household passcode. Returns the Set-Cookie header value. */
-export async function signIn(env, passcode, person) {
-  if (!env.HOUSEHOLD_PASSCODE) {
-    throw new HttpError(500, 'This kitchen has no passcode set yet. Run: npx wrangler secret put HOUSEHOLD_PASSCODE');
-  }
-  if (!env.SESSION_SECRET) {
-    throw new HttpError(500, 'This kitchen has no session secret yet. Run: npx wrangler secret put SESSION_SECRET');
-  }
+export async function signIn(env, passcode, person, { local = false } = {}) {
+  const missing = (name) => new HttpError(500, local
+    ? `This kitchen has no ${name} yet. Run \`npm run setup\`, or add ${name} to the .dev.vars file yourself.`
+    : `This kitchen has no ${name} yet. Run: npx wrangler secret put ${name}`);
+
+  if (!env.HOUSEHOLD_PASSCODE) throw missing('HOUSEHOLD_PASSCODE');
+  if (!env.SESSION_SECRET) throw missing('SESSION_SECRET');
+
   if (!sameSecret(passcode || '', env.HOUSEHOLD_PASSCODE)) {
     throw new HttpError(401, "That passcode doesn't match.");
   }
@@ -96,17 +116,14 @@ export async function signIn(env, passcode, person) {
     person: name,
     cookie: [
       `${COOKIE}=${encodeURIComponent(token)}`,
-      'Path=/',
-      'HttpOnly',
-      'Secure',
-      'SameSite=Lax',
+      ...cookieParts(local),
       `Max-Age=${TTL_DAYS * 86400}`,
     ].join('; '),
   };
 }
 
-export function signOutCookie() {
-  return `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export function signOutCookie(local = false) {
+  return [`${COOKIE}=`, ...cookieParts(local), 'Max-Age=0'].join('; ');
 }
 
 /** Who is making this request? Null when signed out. */

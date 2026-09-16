@@ -5,13 +5,15 @@
   "description": "A shared recipe box for two people \u2014 import from photos, links and reels, cook, rate, and remember.",
   "type": "module",
   "scripts": {
+    "setup": "node scripts/setup-local.mjs",
     "dev": "wrangler dev",
+    "test": "node --test \"test/**/*.test.js\"",
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create kitchen",
     "db:init": "wrangler d1 execute kitchen --remote --file=./schema.sql",
     "db:init:local": "wrangler d1 execute kitchen --local --file=./schema.sql",
-    "tail": "wrangler tail",
-    "test": "node --test \"test/**/*.test.js\""
+    "db:reset:local": "wrangler d1 execute kitchen --local --command=\"DROP TABLE IF EXISTS recipes; DROP TABLE IF EXISTS cooks; DROP TABLE IF EXISTS ratings; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS pantry;\" && npm run db:init:local",
+    "tail": "wrangler tail"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0"

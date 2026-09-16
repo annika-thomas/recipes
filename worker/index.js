@@ -7,7 +7,7 @@
  */
 
 import { json, error, HttpError } from './lib/http.js';
-import { signIn, signOutCookie, currentPerson, requirePerson } from './lib/auth.js';
+import { signIn, signOutCookie, currentPerson, requirePerson, isLocal } from './lib/auth.js';
 import { CATEGORIES } from './lib/recipeSchema.js';
 import {
   listRecipes, getRecipe, createRecipe, updateRecipe, deleteRecipe,
@@ -60,6 +60,7 @@ async function api(request, env, ctx, url) {
     return json({
       person,
       configured: Boolean(env.HOUSEHOLD_PASSCODE && env.SESSION_SECRET),
+      local: isLocal(request),
       canImport: Boolean(env.ANTHROPIC_API_KEY),
       categories: CATEGORIES,
       locations: LOCATIONS,
@@ -68,12 +69,12 @@ async function api(request, env, ctx, url) {
 
   if (route === 'POST /api/session') {
     const body = await request.json().catch(() => ({}));
-    const { person, cookie } = await signIn(env, body.passcode, body.person);
+    const { person, cookie } = await signIn(env, body.passcode, body.person, { local: isLocal(request) });
     return json({ person }, 200, { 'set-cookie': cookie });
   }
 
   if (route === 'DELETE /api/session') {
-    return json({ ok: true }, 200, { 'set-cookie': signOutCookie() });
+    return json({ ok: true }, 200, { 'set-cookie': signOutCookie(isLocal(request)) });
   }
 
   if (!PUBLIC.has(route)) await requirePerson(request, env);

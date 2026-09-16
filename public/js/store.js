@@ -13,6 +13,7 @@ export const state = {
   ready: false,
   person: null,
   configured: true,
+  local: false,
   canImport: true,
   categories: [],
   locations: [],
@@ -78,6 +79,7 @@ export async function loadSession() {
   const data = await call('/session');
   state.person = data.person;
   state.configured = data.configured;
+  state.local = Boolean(data.local);
   state.canImport = data.canImport;
   state.categories = data.categories || [];
   state.locations = data.locations || [];

@@ -81,7 +81,9 @@ export function renderGate(onSignedIn) {
     el('h1', { text: 'Kitchen' }),
     el('p', {
       text: notConfigured
-        ? 'This kitchen has no passcode yet. Set one on the server first — the README has the two commands.'
+        ? (state.local
+          ? 'No passcode set yet. Stop the server, run `npm run setup`, and start it again.'
+          : 'This kitchen has no passcode yet. Set one on the server first — the README has the commands.')
         : 'The recipes you two keep. Type the passcode you share, and tell it who you are.',
     }),
     notConfigured ? null : form);
