@@ -121,7 +121,16 @@
    Base
    ============================================================ */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; overscroll-behavior-y: none; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  max-width: 100%;
+  /* clip, not hidden: hidden would make these a scroll container and kill the
+     position:sticky app bar. */
+  overflow-x: clip;
+  overscroll-behavior-y: none;
+}
 
 body {
   background: var(--bg);
@@ -132,7 +141,18 @@ body {
   font-weight: 500;
   -webkit-font-smoothing: antialiased;
   text-size-adjust: 100%;
+
+  /* Stops the page being dragged sideways, and — the actual cause of it —
+     kills double-tap-to-zoom. Scrolling a long recipe past a big photo makes
+     an accidental double-tap easy, and once zoomed the page pans horizontally
+     and the left edge of every line disappears. Pinch-to-zoom still works, so
+     this costs nothing anyone needs. */
+  touch-action: manipulation;
+  overscroll-behavior-x: none;
 }
+
+/* A long dish name should wrap rather than push the page wider than the phone. */
+h1, h2, h3, h4, p, li, span { overflow-wrap: break-word; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: none; background: none; padding: 0; }
