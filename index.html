@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitchen</title>
+
+  <!--
+    A signpost, for when GitHub Pages is serving this repository from the
+    branch rather than from the workflow.
+
+    In that mode Pages publishes the repo root, where the app is one level
+    down in public/ — so without this you land on the README. With Pages set
+    to "GitHub Actions" instead, only public/ is published and this file is
+    never part of the site at all. Harmless either way, and it means the link
+    works whichever setting is in force.
+  -->
+  <meta http-equiv="refresh" content="0; url=./public/">
+  <link rel="canonical" href="./public/">
+
+  <style>
+    body {
+      margin: 0; min-height: 100vh;
+      display: grid; place-items: center;
+      background: #f6f2ea; color: #3a332c;
+      font: 500 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+      text-align: center; padding: 24px;
+    }
+    a { color: #c85f3c; font-weight: 700; }
+    @media (prefers-color-scheme: dark) { body { background: #211d1a; color: #f0e9df; } a { color: #e2825f; } }
+  </style>
+</head>
+<body>
+  <div>
+    <div style="font-size:44px">🍲</div>
+    <p>Opening Kitchen…</p>
+    <p><a href="./public/">Tap here if it doesn't</a></p>
+  </div>
+  <script>location.replace('./public/');</script>
+</body>
+</html>
