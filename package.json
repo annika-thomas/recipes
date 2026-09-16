@@ -7,6 +7,7 @@
   "scripts": {
     "setup": "node scripts/setup-local.mjs",
     "dev": "wrangler dev",
+    "deploy:setup": "node scripts/deploy.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create kitchen",

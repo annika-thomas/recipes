@@ -12,12 +12,12 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*", "/img/*"]
 
-# Shared recipe database. Fill in database_id after `npm run db:create`.
+# Shared recipe database. `npm run deploy:setup` fills in database_id for you.
 [[d1_databases]]
 binding = "DB"
 database_name = "kitchen"
 database_id = "PASTE_YOUR_DATABASE_ID_HERE"
-# (any value works for `wrangler dev --local`, which uses a local SQLite file)
+# (the placeholder is fine for local dev, which uses its own SQLite file)
 
 # Recipe photos and imported screenshots.
 [[r2_buckets]]

@@ -132,62 +132,62 @@ put real recipes in.
 Do this once the app is how you want it. About ten minutes, and it needs a free
 [Cloudflare account](https://dash.cloudflare.com/sign-up) — no card, no plan.
 
+> **GitHub Pages can't host this one.** Pages serves static files with no server
+> behind them, and this app's whole `/api` layer *is* a server — the shared
+> database, reading screenshots, fetching recipe sites. On Pages the sign-in
+> screen would load and then reject your passcode, because there's nothing to
+> check it. The workouts and personal-assistant apps live on Pages happily
+> because they keep everything in `localStorage` on one device, which is exactly
+> why those two don't sync between devices.
+
 Nothing from your local run carries over: the deployed app gets its own empty
 database. If you've already typed in recipes you want to keep, take
 **Settings → Download a backup** first and re-add them, or copy the local
 SQLite file up with `wrangler d1 execute`.
 
-### 1. Sign in to Cloudflare
-
 ```bash
-npx wrangler login          # opens a browser to authorise
+npm run deploy:setup
 ```
 
-### 2. Make the shared database and photo bucket
+That checks your Cloudflare login, creates the database and the photo bucket,
+writes the database id into `wrangler.toml` for you, builds the tables, asks for
+your passcode and API key, and deploys. It skips anything already done, so it's
+safe to run again if it stops halfway.
+
+It ends by printing your URL — something like
+`https://kitchen.<your-subdomain>.workers.dev`. Open it, type your passcode, put
+your name in. Send that link and the passcode to your partner and they do the
+same with their own name.
+
+After that, shipping a change is just `npm run deploy`.
+
+> If you don't have a Cloudflare account yet, make a free one at
+> [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) — no card —
+> then run `npx wrangler login` once. The setup command tells you if you've
+> missed this.
+
+<details>
+<summary>The same thing by hand, if you'd rather see each step</summary>
 
 ```bash
-npx wrangler d1 create kitchen
+npx wrangler login
+npx wrangler d1 create kitchen          # prints a database_id
+# paste that id over PASTE_YOUR_DATABASE_ID_HERE in wrangler.toml
 npx wrangler r2 bucket create kitchen-photos
-```
-
-The first command prints a `database_id`. Open `wrangler.toml` and paste it over
-`PASTE_YOUR_DATABASE_ID_HERE`. Then create the tables on the real database:
-
-```bash
 npm run db:init
-```
-
-### 3. Set the three secrets
-
-Deployed, secrets are stored by Cloudflare rather than read from `.dev.vars`.
-Each command prompts for the value.
-
-```bash
 npx wrangler secret put HOUSEHOLD_PASSCODE   # the passcode you'll both type
-npx wrangler secret put SESSION_SECRET       # any long random string
-npx wrangler secret put ANTHROPIC_API_KEY    # from console.anthropic.com
+npx wrangler secret put SESSION_SECRET       # openssl rand -base64 32
+npx wrangler secret put ANTHROPIC_API_KEY    # optional, from console.anthropic.com
+npm run deploy
 ```
 
-`openssl rand -base64 32` gives you a good `SESSION_SECRET`. It only signs the
-login cookie — you never type it again. Use a different passcode from your local
-one if you like; they're unrelated.
-
+`SESSION_SECRET` only signs the login cookie — you never type it again.
 `ANTHROPIC_API_KEY` is a separate thing from a Claude subscription: sign in at
 [console.anthropic.com](https://console.anthropic.com), make a key, put a few
 dollars of credit on it. See [what it costs](#what-it-costs). You can leave it
 out and add it later.
 
-### 4. Deploy
-
-```bash
-npm run deploy
-```
-
-Wrangler prints a URL like `https://kitchen.<your-subdomain>.workers.dev`. Open
-it, type the passcode, put your name in. Send the URL and the passcode to your
-partner and they do the same with their own name.
-
-Every later change is one `npm run deploy`.
+</details>
 
 ### Keeping it to yourselves
 
