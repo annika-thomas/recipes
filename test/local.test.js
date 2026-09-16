@@ -266,3 +266,100 @@ test('signing in is just a name, and it is remembered', async () => {
   await backend.signOut();
   assert.equal((await backend.session()).person, null);
 });
+
+/* -------------------------------------------------------- not losing it --- */
+
+test('a corrupted box falls back to the copy behind it', async () => {
+  await addRecipe({ title: 'Kept' });
+  await addRecipe({ title: 'Also kept' });
+
+  // Something wrote garbage over the main copy.
+  localStorage.setItem('kitchen.v1', '{"recipes":[{"tit');
+
+  const { recipes } = await backend.loadAll();
+  assert.deepEqual(recipes.map((r) => r.title).sort(), ['Kept']);
+
+  // And it healed itself, so the next read doesn't depend on the backstop.
+  assert.equal(localStorage.getItem('kitchen.v1').startsWith('{"version"'), true);
+});
+
+test('an empty box is left empty — deleting your last recipe sticks', async () => {
+  const saved = await addRecipe();
+  await backend.deleteRecipe(saved.id);
+
+  const { recipes } = await backend.loadAll();
+  assert.equal(recipes.length, 0, 'a deliberate delete must not be undone');
+});
+
+test('a delete is offered back, not forced back', async () => {
+  const first = await addRecipe({ title: 'Deleted by accident' });
+  await addRecipe({ title: 'Still here' });
+  await backend.deleteRecipe(first.id);
+
+  const offer = backend.recoverable();
+  assert.equal(offer.count, 1);
+
+  // Nothing came back on its own.
+  let titles = (await backend.loadAll()).recipes.map((r) => r.title);
+  assert.deepEqual(titles.sort(), ['Still here']);
+
+  backend.recover();
+  titles = (await backend.loadAll()).recipes.map((r) => r.title);
+  assert.deepEqual(titles.sort(), ['Deleted by accident', 'Still here']);
+});
+
+test('nothing to recover when the box is whole', async () => {
+  await addRecipe();
+  await addRecipe({ title: 'Second' });
+  assert.equal(backend.recoverable(), null);
+});
+
+test('recovering twice does not duplicate anything', async () => {
+  const first = await addRecipe({ title: 'Once' });
+  await addRecipe({ title: 'Other' });
+  await backend.deleteRecipe(first.id);
+
+  backend.recover();
+  backend.recover();
+
+  const titles = (await backend.loadAll()).recipes.map((r) => r.title);
+  assert.deepEqual(titles.sort(), ['Once', 'Other']);
+});
+
+test('summary counts without loading the whole box', async () => {
+  assert.deepEqual(backend.summary(), { recipes: 0, cooks: 0 });
+  const saved = await addRecipe();
+  await backend.logCook(saved.id, { date: TODAY }, 'Annika');
+  assert.deepEqual(backend.summary(), { recipes: 1, cooks: 1 });
+});
+
+test('remembers when a backup was last taken', async () => {
+  assert.equal(backend.lastBackup(), null);
+  backend.markBackedUp();
+  assert.ok(Date.parse(backend.lastBackup()) > 0);
+});
+
+test('a full disk spends the backstop rather than refusing the save', async () => {
+  await addRecipe({ title: 'Already saved' });
+
+  const real = localStorage.setItem.bind(localStorage);
+  let refusals = 1;
+  localStorage.setItem = (k, v) => {
+    if (k === 'kitchen.v1' && refusals-- > 0) {
+      const err = new Error('full');
+      err.name = 'QuotaExceededError';
+      throw err;
+    }
+    real(k, v);
+  };
+
+  try {
+    await addRecipe({ title: 'Squeezed in' });
+  } finally {
+    localStorage.setItem = real;
+  }
+
+  const titles = (await backend.loadAll()).recipes.map((r) => r.title);
+  assert.deepEqual(titles.sort(), ['Already saved', 'Squeezed in']);
+  assert.equal(localStorage.getItem('kitchen.v1.prev'), null, 'the backstop was spent');
+});

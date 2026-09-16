@@ -8,8 +8,9 @@
  */
 
 import { el } from '../util/dom.js';
-import { state, signIn } from '../store.js';
+import { state, signIn, boxSummary } from '../store.js';
 import { toast } from './sheet.js';
+import { pluralise } from '../util/format.js';
 
 const REMEMBERED = 'kitchen.person';
 
@@ -94,12 +95,24 @@ export function renderGate(onSignedIn) {
 
   const notConfigured = !state.configured;
 
+  /*
+    Being asked your name looks exactly like being asked it for the first time,
+    and if you know you had recipes, that reads as "they're gone". Usually they
+    aren't — you signed out, or this device is being handed to the other one of
+    you. Counting what's actually still in the box settles it on the spot.
+  */
+  const held = onDevice ? boxSummary() : null;
+
   return el('div.gate',
     el('div.mark', { text: '🍲' }),
     el('h1', { text: 'Kitchen' }),
     el('p', { text: blurb(onDevice, notConfigured) }),
+    held?.recipes
+      ? el('p.tiny', { style: { margin: '-6px 0 18px', fontWeight: '700', color: 'var(--accent)' },
+        text: `${pluralise(held.recipes, 'recipe')} still saved on this phone.` })
+      : null,
     notConfigured ? null : form,
-    onDevice && !notConfigured
+    onDevice && !notConfigured && !held?.recipes
       ? el('p.tiny.muted', { style: { marginTop: '22px', lineHeight: '1.55' } },
         'Recipes you add are kept on this device. Nothing is uploaded, and nothing is '
         + 'shared with another phone — Settings explains how to move them.')

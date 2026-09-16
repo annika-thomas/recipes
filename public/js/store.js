@@ -248,6 +248,40 @@ export async function importData(parsed) {
   return result;
 }
 
+/* ------------------------------------------------------- not losing it --- */
+
+/*
+  These only mean something for a box that lives on the device. With a server
+  the recipes are somewhere else and somebody else's job to keep, so each of
+  these answers "nothing to say" rather than making the screens branch.
+*/
+
+/** What's in the box, for screens that need it before sign-in. */
+export function boxSummary() {
+  return backend.summary?.() || null;
+}
+
+/** ISO date of the last downloaded backup, or null. */
+export function lastBackup() {
+  return backend.lastBackup?.() || null;
+}
+
+export function markBackedUp() {
+  backend.markBackedUp?.();
+}
+
+/** Recipes the backstop still holds that the box doesn't, or null. */
+export function recoverable() {
+  return backend.recoverable?.() || null;
+}
+
+export async function recover() {
+  if (!backend.recover) throw new Error('There is nothing to put back.');
+  const result = backend.recover();
+  await refresh();
+  return result;
+}
+
 /* -------------------------------------------------------------- derived --- */
 
 /** Cooks keyed by YYYY-MM-DD, for the calendar. */

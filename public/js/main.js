@@ -17,6 +17,7 @@ import { renderKitchen } from './ui/kitchen.js';
 import { renderSettings, applyStoredTheme } from './ui/settings.js';
 import { openAddSheet, openSharedText } from './ui/add.js';
 import { closeAllSheets, toast } from './ui/sheet.js';
+import { requestPersistence } from './backends/persist.js';
 
 const app = document.getElementById('app');
 
@@ -220,6 +221,15 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 (async function boot() {
+  /*
+    Ask for durable storage before anything else, and don't wait for the
+    answer. Without it the browser treats the recipe box as a cache it may
+    clear — Safari does so after about a week of not opening the app, which is
+    an ordinary gap between two dinners. Nothing on screen depends on the
+    reply, so it must never hold up the first paint.
+  */
+  requestPersistence();
+
   try {
     await loadSession();
   } catch {

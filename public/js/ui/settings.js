@@ -2,12 +2,16 @@
 
 import { el, svg } from '../util/dom.js';
 import { ICONS } from './icons.js';
-import { state, signOut, refresh, exportData, importData } from '../store.js';
+import {
+  state, signOut, refresh, exportData, importData,
+  lastBackup, markBackedUp, recoverable, recover,
+} from '../store.js';
 import { openSheet, confirmSheet, toast } from './sheet.js';
 import { forgetPerson } from './gate.js';
 import { pluralise } from '../util/format.js';
 import { banner } from './bits.js';
 import { storageEstimate } from '../backends/photos.js';
+import { persistence } from '../backends/persist.js';
 
 const THEME_KEY = 'kitchen.theme';
 
@@ -39,6 +43,8 @@ export function renderSettings({ onSignedOut, rerender }) {
 
   return {
     body: el('div',
+      onDevice ? recoveryOffer(rerender) : null,
+      onDevice ? backupWarning() : null,
       onDevice ? deviceNotice() : null,
 
       el('div.section-title', { text: 'This device' }),
@@ -96,10 +102,10 @@ export function renderSettings({ onSignedOut, rerender }) {
             el('p', { text: countsLine() })),
           svg(ICONS.refresh, { size: 18 })),
 
-        el('button.setting', { type: 'button', onclick: () => exportBackup(onDevice) },
+        el('button.setting', { type: 'button', onclick: () => { exportBackup(onDevice); rerender(); } },
           el('div.grow',
             el('h4', { text: 'Download a backup' }),
-            el('p', { text: onDevice ? countsLine() : 'Every recipe, rating, note and cook as one file.' })),
+            el('p', { text: onDevice ? backupLine() : 'Every recipe, rating, note and cook as one file.' })),
           svg(ICONS.download, { size: 18 })),
 
         onDevice ? el('button.setting', { type: 'button', onclick: () => openRestore(rerender) },
@@ -150,7 +156,8 @@ function exportBackup(onDevice) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 
   if (onDevice) {
-    toast('Saved. Send it to your other device and use "Open a backup" there.');
+    markBackedUp();
+    toast('Saved. Keep it somewhere off this phone — that file is the only copy that survives this app being deleted.');
   }
 }
 
@@ -215,19 +222,104 @@ function openAbout(onDevice) {
   });
 }
 
-/** How much room the photos are taking, once there are enough to matter. */
+/* ----------------------------------------------------- not losing it --- */
+
+/** "3 days ago", near enough for deciding whether to take another backup. */
+function sinceBackup() {
+  const when = lastBackup();
+  if (!when) return null;
+  const days = Math.floor((Date.now() - Date.parse(when)) / 86_400_000);
+  if (days <= 0) return { days, text: 'today' };
+  if (days === 1) return { days, text: 'yesterday' };
+  if (days < 30) return { days, text: `${days} days ago` };
+  return { days, text: 'over a month ago' };
+}
+
+function backupLine() {
+  const since = sinceBackup();
+  if (!since) return `${countsLine()} Never backed up.`;
+  return `${countsLine()} Last backup ${since.text}.`;
+}
+
+/**
+ * Say so when the only copy is one uninstall away from gone.
+ *
+ * Deleting the home-screen app takes its storage with it, and so does clearing
+ * site data — neither asks twice, and neither is undoable. The backup file is
+ * the only thing that survives either, so this gets loud once there is enough
+ * in the box to be worth losing.
+ */
+function backupWarning() {
+  if (!state.recipes.length) return null;
+  const since = sinceBackup();
+  if (since && since.days < 14) return null;
+
+  return el('div', { style: { marginBottom: '4px' } },
+    banner(
+      since
+        ? `Last backup was ${since.text}. Deleting this app from your home screen, or clearing `
+          + 'site data, erases everything since then — a backup file is the only copy that survives it.'
+        : 'No backup yet. Deleting this app from your home screen, or clearing site data, would '
+          + 'erase every recipe here — a backup file is the only copy that survives it.',
+      'warn',
+    ));
+}
+
+/** Offer back recipes the box lost that the previous copy still has. */
+function recoveryOffer(rerender) {
+  const found = recoverable();
+  if (!found) return null;
+
+  return el('div', { style: { marginBottom: '10px' } },
+    banner(`${pluralise(found.count, 'recipe')} from just before the last change `
+      + 'can still be put back.', 'info'),
+    el('button.btn.btn-primary.btn-block', {
+      type: 'button',
+      style: { marginTop: '8px' },
+      text: `Put ${found.count === 1 ? 'it' : 'them'} back`,
+      onclick: async (event) => {
+        event.currentTarget.disabled = true;
+        try {
+          const { added } = await recover();
+          toast(added ? `${pluralise(added, 'recipe')} back.` : 'Nothing was missing.');
+          rerender();
+        } catch (err) {
+          toast(err.message, { bad: true });
+        }
+      },
+    }));
+}
+
+/** How much room the photos are taking, and whether the browser will keep it. */
 function storageLine() {
   const line = el('p.tiny.muted', {
     style: { margin: '16px 4px 0', lineHeight: '1.5' },
     hidden: true,
   });
 
-  storageEstimate().then((info) => {
-    if (!info || info.usage < 2_000_000) return;
-    const mb = (n) => `${(n / 1_000_000).toFixed(0)}MB`;
-    line.textContent = `Using ${mb(info.usage)} on this device`
-      + (info.quota ? ` of about ${mb(info.quota)} available.` : '.');
+  const show = (textContent) => {
+    line.textContent = textContent;
     line.hidden = false;
+  };
+
+  storageEstimate().then((info) => {
+    const parts = [];
+    if (info && info.usage >= 2_000_000) {
+      const mb = (n) => `${(n / 1_000_000).toFixed(0)}MB`;
+      parts.push(`Using ${mb(info.usage)} on this device`
+        + (info.quota ? ` of about ${mb(info.quota)} available.` : '.'));
+    }
+    /*
+      Only worth saying when the answer is no. "Granted" is the expected case
+      and reads as reassurance nobody asked for; "not granted" means the
+      browser may clear the box on its own, which is worth a line.
+    */
+    if (persistence.supported && persistence.asked && !persistence.granted) {
+      parts.push('This browser hasn’t agreed to keep the recipes permanently, so it may '
+        + 'clear them if the device runs low on space or you don’t open the app for a '
+        + 'while. Keep a backup file.');
+    }
+    if (parts.length) show(parts.join(' '));
   }).catch(() => {});
 
   return line;

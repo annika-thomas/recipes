@@ -22,6 +22,21 @@ import { normalise, covered } from '../util/match.js';
 const KEY = 'kitchen.v1';
 const PERSON_KEY = 'kitchen.person';
 
+/**
+ * The last box that was known good, kept so one bad write can't be the end of
+ * it. localStorage.setItem is atomic, but the JSON going into it is built from
+ * whatever the app currently believes, and "the app currently believes
+ * nothing" is a state a bug can reach. Keeping the previous copy means that
+ * mistake costs one edit instead of the whole box.
+ *
+ * It is not protection against the browser clearing its storage: both keys
+ * live in the same place and go together. That is what backup files are for.
+ */
+const PREV_KEY = 'kitchen.v1.prev';
+
+/** When a backup file was last downloaded, so Settings can nag proportionately. */
+const BACKUP_KEY = 'kitchen.backup.at';
+
 const LISTS = ['recipes', 'cooks', 'ratings', 'notes', 'pantry'];
 
 /**
@@ -39,33 +54,73 @@ function empty() {
 
 /* ------------------------------------------------------------- the blob --- */
 
-function read() {
-  const box = empty();
-  let raw;
+function get(key) {
   try {
-    raw = localStorage.getItem(KEY);
+    return localStorage.getItem(key);
   } catch {
-    return box; // storage blocked; the app still runs, it just won't persist
+    return null; // storage blocked; the app still runs, it just won't persist
   }
-  if (!raw) return box;
+}
 
+/** Turn stored JSON into a box, or null if it isn't one. */
+function parse(raw) {
+  if (!raw) return null;
   try {
     const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return null;
+    const box = empty();
     // Tolerate a partial or hand-edited blob rather than losing the lot.
     for (const key of LISTS) {
       if (Array.isArray(data[key])) box[key] = data[key];
     }
     return box;
   } catch {
-    return box;
+    return null;
   }
 }
 
+function read() {
+  const box = parse(get(KEY));
+  if (box) return box;
+
+  /*
+    The main copy is missing or isn't JSON. An empty box that parsed fine is
+    left alone — that's someone who deleted their last recipe, and resurrecting
+    it would be worse than useless. This is only for the case where there is
+    nothing readable at all, where falling back can only be an improvement.
+  */
+  const previous = parse(get(PREV_KEY));
+  if (previous?.recipes.length) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(previous));
+    } catch { /* still readable this session even if it can't be written back */ }
+    return previous;
+  }
+
+  return empty();
+}
+
 function write(data) {
+  const json = JSON.stringify(data);
+  const previous = get(KEY);
+
   try {
-    localStorage.setItem(KEY, JSON.stringify(data));
+    // Order matters: the old copy is banked before the new one lands, so a
+    // failure here leaves both the stored box and its backstop untouched.
+    if (previous && previous !== json) localStorage.setItem(PREV_KEY, previous);
+  } catch { /* no room for a backstop; the real write still gets its chance */ }
+
+  try {
+    localStorage.setItem(KEY, json);
   } catch (err) {
     if (err?.name === 'QuotaExceededError' || err?.code === 22) {
+      // The backstop is the one thing here that can be spared, so spend it
+      // rather than refusing the save.
+      try {
+        localStorage.removeItem(PREV_KEY);
+        localStorage.setItem(KEY, json);
+        return data;
+      } catch { /* genuinely full */ }
       throw new Error("This device's storage is full. Download a backup from Settings, then delete some recipes.");
     }
     throw new Error("Couldn't save to this device. If you're in a private window, storage is blocked there.");
@@ -380,6 +435,57 @@ export const backend = {
 
   exportAll() {
     return { exportedAt: nowIso(), ...read() };
+  },
+
+  /**
+   * How much is in the box, without loading and enriching all of it.
+   *
+   * The gate uses this. Being asked your name when you know you had recipes
+   * reads as "it lost everything", and most of the time it isn't — you signed
+   * out, or switched who this device is. Saying what's still here turns a
+   * frightening screen into a boring one.
+   */
+  summary() {
+    const data = read();
+    return { recipes: data.recipes.length, cooks: data.cooks.length };
+  },
+
+  /** When a backup file was last downloaded, or null if never. */
+  lastBackup() {
+    const raw = get(BACKUP_KEY);
+    return raw && !Number.isNaN(Date.parse(raw)) ? raw : null;
+  },
+
+  markBackedUp() {
+    try {
+      localStorage.setItem(BACKUP_KEY, nowIso());
+    } catch { /* the backup still downloaded; only the reminder is lost */ }
+  },
+
+  /**
+   * Is the backstop holding recipes this box no longer has?
+   *
+   * read() heals the unreadable case by itself. This is the other one: the
+   * stored box parsed fine but has less in it than the copy behind it, which
+   * is what a bad delete looks like. That can't be undone automatically —
+   * deleting things is allowed — so it's offered in Settings instead.
+   */
+  recoverable() {
+    const previous = parse(get(PREV_KEY));
+    if (!previous?.recipes.length) return null;
+
+    const current = parse(get(KEY)) || empty();
+    const missing = previous.recipes.filter(
+      (r) => r?.id && !current.recipes.some((c) => c.id === r.id),
+    );
+    return missing.length ? { count: missing.length } : null;
+  },
+
+  /** Put back whatever the backstop still has. Merges; nothing is overwritten. */
+  recover() {
+    const previous = parse(get(PREV_KEY));
+    if (!previous?.recipes.length) throw new Error('There is nothing to put back.');
+    return this.importAll(previous);
   },
 
   /**
