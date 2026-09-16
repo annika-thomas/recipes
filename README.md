@@ -7,10 +7,13 @@ when, what you thought of it, and what you've got in the house.
 ![The recipe list, a recipe, and the calendar of what got cooked](assets/screenshot.png)
 
 Unlike the workouts and personal-assistant apps, this one has a server. It has
-to: your phone and your partner's phone are looking at the same recipes, and
+to: two phones looking at the same recipes need somewhere to keep them, and
 reading a screenshot or fetching a recipe site is something a browser can't do
-on its own. It runs on Cloudflare's free tier — one command to deploy, nothing
-to maintain, no credit card.
+on its own.
+
+It runs on your own machine first — four commands, no account, nothing to sign
+up for — and the same code deploys to Cloudflare's free tier when you're ready
+to put it on both phones.
 
 ---
 
@@ -52,21 +55,95 @@ Opening the app refreshes it, and so does coming back to it after a while.
 
 ---
 
-## Setting it up
+## Run it on your laptop
 
-About fifteen minutes, once. You need a free
-[Cloudflare account](https://dash.cloudflare.com/sign-up) — no card, no plan.
+Start here. A local run needs **no Cloudflare account and no API key** — it's
+all on your machine, and it's the right place to shape the app before either
+phone is involved.
 
-### 1. Get the code and sign in
+You need [Node 18 or newer](https://nodejs.org).
 
 ```bash
-git clone https://github.com/annika-thomas/recipes.git kitchen
+git clone -b claude/recipe-sharing-app-0snh6g \
+  https://github.com/annika-thomas/recipes.git kitchen
 cd kitchen
 npm install
+npm run setup     # asks for a passcode, makes the local database
+npm run dev       # http://localhost:8787
+```
+
+`npm run setup` writes a git-ignored `.dev.vars` with the passcode you pick and
+a generated cookie-signing secret, then builds a local SQLite copy of the
+schema. It won't overwrite that file if it already exists, so a key you put
+there by hand survives re-running it.
+
+Open <http://localhost:8787>, type your passcode, put your name in. Adding
+recipes by hand works immediately, and so does the calendar, ratings, notes and
+the whole kitchen tab.
+
+### Turning importing on locally
+
+Photo and reel importing needs an Anthropic API key — `npm run setup` offers to
+take one, or you can add the line to `.dev.vars` yourself later:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Restart `npm run dev` after editing that file. **Importing from recipe websites
+mostly works without a key at all**, because most food sites publish their
+recipes as structured data and no model is involved — worth trying first, since
+it's free and it's the path you'll use most.
+
+### While you're changing things
+
+- `npm run dev` reloads on save. The browser holds a service worker, so if the
+  UI looks stale after an edit, hard-reload once (⌘⇧R).
+- `npm test` runs the import tests: the JSON-LD extractor against the shapes
+  real recipe sites emit, the ingredient matcher, and the normalisation between
+  an import and the database. Those are the parts that rot quietly — when they
+  break you get a recipe with no steps rather than an error — so they're worth
+  re-running if you touch anything under `worker/extract/`.
+- `npm run db:reset:local` empties the local database when you've filled it with
+  junk while poking at it.
+- Deleting the `.wrangler/` folder resets local state completely.
+
+### Where the things you'll want to change live
+
+| To change | Edit |
+| --- | --- |
+| Colours, spacing, the whole look | `public/css/app.css` — the `:root` block at the top is the palette, and the dark theme mirrors it |
+| The categories | `CATEGORIES` in `worker/lib/recipeSchema.js`, and the matching emoji in `public/js/ui/icons.js` |
+| Which staples "add the usual" adds | `DEFAULT_STAPLES` in `worker/routes/pantry.js` |
+| How recipes are sorted by default | `SORTS` and `sortRecipes` in `public/js/ui/library.js` |
+| What the importer is told to do | The `SYSTEM` prompt in `worker/lib/claude.js` |
+| Which model reads imports | `CLAUDE_MODEL` in `wrangler.toml` |
+| Storage locations (fridge, freezer…) | `LOCATIONS` in `worker/routes/pantry.js` |
+
+One caution: if you rename a **category id** after you've already saved recipes
+under it, those recipes keep the old id and fall back to showing as Mains.
+Changing the `label` is always safe; changing the `id` is worth doing before you
+put real recipes in.
+
+---
+
+## Going live on both phones
+
+Do this once the app is how you want it. About ten minutes, and it needs a free
+[Cloudflare account](https://dash.cloudflare.com/sign-up) — no card, no plan.
+
+Nothing from your local run carries over: the deployed app gets its own empty
+database. If you've already typed in recipes you want to keep, take
+**Settings → Download a backup** first and re-add them, or copy the local
+SQLite file up with `wrangler d1 execute`.
+
+### 1. Sign in to Cloudflare
+
+```bash
 npx wrangler login          # opens a browser to authorise
 ```
 
-### 2. Make the database and the photo bucket
+### 2. Make the shared database and photo bucket
 
 ```bash
 npx wrangler d1 create kitchen
@@ -74,7 +151,7 @@ npx wrangler r2 bucket create kitchen-photos
 ```
 
 The first command prints a `database_id`. Open `wrangler.toml` and paste it over
-`PASTE_YOUR_DATABASE_ID_HERE`. Then create the tables:
+`PASTE_YOUR_DATABASE_ID_HERE`. Then create the tables on the real database:
 
 ```bash
 npm run db:init
@@ -82,8 +159,8 @@ npm run db:init
 
 ### 3. Set the three secrets
 
-These are stored by Cloudflare, never in the repo. Each command prompts for the
-value.
+Deployed, secrets are stored by Cloudflare rather than read from `.dev.vars`.
+Each command prompts for the value.
 
 ```bash
 npx wrangler secret put HOUSEHOLD_PASSCODE   # the passcode you'll both type
@@ -91,17 +168,14 @@ npx wrangler secret put SESSION_SECRET       # any long random string
 npx wrangler secret put ANTHROPIC_API_KEY    # from console.anthropic.com
 ```
 
-For `SESSION_SECRET`, `openssl rand -base64 32` gives you something suitable.
-It only signs the login cookie — you never type it again.
+`openssl rand -base64 32` gives you a good `SESSION_SECRET`. It only signs the
+login cookie — you never type it again. Use a different passcode from your local
+one if you like; they're unrelated.
 
-`ANTHROPIC_API_KEY` is what reads screenshots and captions. It's a separate
-thing from a Claude subscription: sign in at
+`ANTHROPIC_API_KEY` is a separate thing from a Claude subscription: sign in at
 [console.anthropic.com](https://console.anthropic.com), make a key, put a few
-dollars of credit on it. See [what it costs](#what-it-costs) below.
-
-**You can skip the API key.** Everything else works without it — typing recipes
-in, and importing from recipe sites that publish structured data (which is most
-of them). Add the key later and photo and reel importing lights up.
+dollars of credit on it. See [what it costs](#what-it-costs). You can leave it
+out and add it later.
 
 ### 4. Deploy
 
@@ -109,11 +183,11 @@ of them). Add the key later and photo and reel importing lights up.
 npm run deploy
 ```
 
-Wrangler prints a URL like `https://kitchen.<your-subdomain>.workers.dev`. That's
-the app. Open it, type the passcode, put your name in.
+Wrangler prints a URL like `https://kitchen.<your-subdomain>.workers.dev`. Open
+it, type the passcode, put your name in. Send the URL and the passcode to your
+partner and they do the same with their own name.
 
-Send the URL and the passcode to your partner and they do the same on their
-phone with their own name.
+Every later change is one `npm run deploy`.
 
 ### Keeping it to yourselves
 
@@ -124,14 +198,15 @@ is what stops them going further. Two things worth doing:
 - The page is marked `noindex`, so it won't turn up in a search.
 
 If you want a real wall in front of it, Cloudflare Access (free for up to 50
-users) can sit on the Worker and require a login link to your email addresses
-before the app even loads. Not necessary; available if you'd rather.
+users) can sit on the Worker and require a login link to your two email
+addresses before the app even loads. Not necessary; available if you'd rather.
 
 ---
 
 ## Putting it on your home screen
 
-This is the bit that makes it feel like an app rather than a website.
+This is the bit that makes it feel like an app rather than a website. It needs
+the deployed URL — a phone can't reach `localhost` on your laptop.
 
 **On iPhone:** open the URL in **Safari** (it has to be Safari — Chrome on iOS
 can't do this), tap the Share button, scroll down to **Add to Home Screen**,
@@ -262,28 +337,6 @@ Worth doing occasionally.
 
 Deleting a recipe tombstones it rather than erasing it, so the calendar can still
 tell you what you ate in March even if the recipe is long gone.
-
----
-
-## Running it locally
-
-```bash
-npm run db:init:local     # creates a local SQLite copy of the schema
-npm run dev               # http://127.0.0.1:8787
-```
-
-Local runs read secrets from a `.dev.vars` file (git-ignored):
-
-```
-HOUSEHOLD_PASSCODE=whatever
-SESSION_SECRET=whatever
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-`npm test` runs the import tests — the JSON-LD extractor against the shapes real
-recipe sites actually emit, the ingredient matcher, and the normalisation that
-sits between an import and the database. Those are the parts that rot quietly,
-because when they break you get a recipe with no steps rather than an error.
 
 ---
 
