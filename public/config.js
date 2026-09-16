@@ -5,9 +5,12 @@
  *   'local'  this device only — no server exists, don't bother asking
  *   'server' there is a server; talk to it
  *
- * Shipped as 'auto', which is right for the Worker and for `npm run dev`. The
- * GitHub Pages workflow rewrites this file to 'local' before publishing, so the
- * app there doesn't spend a round trip on every open discovering an API that
- * was never going to be there.
+ * Shipped as 'auto', which is right for the Worker and for `npm run dev`.
+ *
+ * github.io is special-cased rather than probed. Pages has no API behind it,
+ * so the probe is a guaranteed failure, and on a slow phone connection the app
+ * would sit blank waiting for a request that was never going to succeed. It's
+ * decided here rather than rewritten by the publishing workflow so that every
+ * way this repo gets published serves the identical file.
  */
-window.KITCHEN_MODE = 'auto';
+window.KITCHEN_MODE = /(^|\.)github\.io$/i.test(location.hostname) ? 'local' : 'auto';

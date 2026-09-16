@@ -1,11 +1,14 @@
 # Publishes the app to GitHub Pages on every push.
 #
-# Only public/ goes up — the Worker, the schema and the tests aren't part of the
-# site. Served this way the app keeps everything on the device, because Pages
-# has no server behind it; the same files deploy to Cloudflare when you want the
-# shared version.
+# This uploads the whole repository, not just public/, and that is deliberate.
+# While Pages is set to "Deploy from a branch", GitHub ALSO runs its own build
+# on every push, and the two race — they have finished within the same second.
+# If the two produce different layouts the site flips between them and any
+# saved URL works only half the time. Publishing the same tree either way makes
+# the race harmless: index.html at the root sends you to public/, where the app
+# is, whichever build got there last.
 #
-# Turn it on once at Settings -> Pages -> Source: GitHub Actions.
+# Setting Settings -> Pages -> Source to GitHub Actions ends the race properly.
 
 name: Deploy to GitHub Pages
 
@@ -39,21 +42,18 @@ jobs:
       - name: Run the tests
         run: npm test
 
-      # Stops Pages running the files through Jekyll, which would drop the
-      # assets folder and anything beginning with an underscore.
-      - name: Add .nojekyll
-        run: touch public/.nojekyll
-
-      # Pages has no API behind it, so say so rather than making every visitor
-      # wait for a request that cannot succeed.
-      - name: Pin the app to device-only storage
-        run: sed -i "s/window.KITCHEN_MODE = 'auto'/window.KITCHEN_MODE = 'local'/" public/config.js
+      # Nothing is rewritten before upload, on purpose. Anything this job
+      # changed would exist only in the workflow's copy of the site, and the
+      # branch build would publish the file without it — which is the very
+      # divergence this is trying to get rid of. (.nojekyll is committed at the
+      # repo root, so the branch build doesn't run Jekyll either.)
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ./public
+          # The whole repo, so this matches what the branch build publishes.
+          path: .
 
   deploy:
     needs: build

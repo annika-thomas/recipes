@@ -7,7 +7,7 @@
  * The one exception is photos, which are immutable once written.
  */
 
-const SHELL = 'kitchen-shell-v1';
+const SHELL = 'kitchen-shell-v2';
 const PHOTOS = 'kitchen-photos-v1';
 
 // Relative to the worker's own scope, so this works at a domain root and
