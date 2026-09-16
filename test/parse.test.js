@@ -378,3 +378,42 @@ BAKE AT 400 FOR 20-25 MIN.
   assert.equal(r.ingredients[3].unit, null, '"1 EGG" has no unit');
   assert.equal(r.steps.length, 3);
 });
+
+/* --------------------------------------------- found on a real NYT recipe --- */
+
+test('a hyphenated number word is not a quantity', () => {
+  // "One-Pot Orzo…" — "One" here is part of a compound, not a count, and
+  // reading it as 1 disqualified the line from being the title.
+  const r = parseRecipeText(`
+One-Pot Orzo With Tomatoes, Corn and Zucchini
+3 tablespoons olive oil
+1 ¼ cups orzo
+Heat the oil and cook the orzo.
+`);
+  assert.equal(r.title, 'One-Pot Orzo With Tomatoes, Corn and Zucchini');
+  assert.equal(r.ingredients.length, 2);
+  assert.equal(r.ingredients[1].qty, 1.25);
+
+  // A number word standing on its own still counts.
+  const two = parseRecipeText('X\ntwo onions\nChop them.');
+  assert.equal(two.ingredients[0].qty, 2);
+});
+
+test('reads a yield written as a range with "to"', () => {
+  const r = parseRecipeText('X\nYield: 4 to 6 servings\n1 egg\nCook.');
+  assert.equal(r.servings, 4);
+  assert.equal(r.servingsUnit, null, '"to" is not what the recipe makes');
+
+  const loaves = parseRecipeText('X\nMakes 2 to 3 loaves\n1 egg\nBake.');
+  assert.equal(loaves.servings, 2);
+  assert.equal(loaves.servingsUnit, 'loaves');
+});
+
+test('reads a bare "Time" line', () => {
+  assert.equal(parseRecipeText('X\nTime: 45 minutes\n1 egg\nCook.').cookMin, 45);
+  assert.equal(parseRecipeText('X\nTime 1 hr 10 min\n1 egg\nCook.').cookMin, 70);
+
+  // But the word "time" inside a step is not the recipe's timing.
+  const step = parseRecipeText('X\n1 egg\nCook it, checking the time as you go.');
+  assert.equal(step.cookMin, null);
+});

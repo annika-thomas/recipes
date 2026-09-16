@@ -122,8 +122,10 @@ function leadingQuantity(line) {
   value = number();
 
   if (value === null) {
-    // "two onions", "a pinch of salt"
-    const m = /^([a-z]+)\b/i.exec(s);
+    // "two onions", "a pinch of salt" — but not "One-Pot", where "One" is
+    // part of a compound word rather than a count. Requiring whitespace after
+    // it is what tells those apart.
+    const m = /^([a-z]+)(?=\s|$)/i.exec(s);
     const word = m && WORD_NUMBERS.get(m[1].toLowerCase());
     if (word !== undefined && word !== null) {
       // Only treat a bare article as a quantity when a unit follows ("a pinch
@@ -260,9 +262,9 @@ function parseStepLine(raw, group) {
 function readMetadata(line, out) {
   const lower = line.toLowerCase();
 
-  const yieldMatch = /\b(?:serves|servings?|yield|makes|feeds)\b\s*:?\s*(\d+(?:\s*[-–]\s*\d+)?)\s*([a-z]+)?/i.exec(line);
+  const yieldMatch = /\b(?:serves|servings?|yield|makes|feeds)\b\s*:?\s*(\d+(?:\s*(?:[-–]|to)\s*\d+)?)\s*([a-z]+)?/i.exec(line);
   if (yieldMatch) {
-    out.servings = Number(yieldMatch[1].split(/[-–]/)[0]);
+    out.servings = Number(/^\d+/.exec(yieldMatch[1])[0]);
     const unit = (yieldMatch[2] || '').toLowerCase();
     // "makes 12 cookies" names what it makes; "serves 4" doesn't.
     if (unit && !['people', 'person', 'servings', 'serving', 'portions', 'portion'].includes(unit)) {
@@ -285,7 +287,7 @@ function readMetadata(line, out) {
   const prep = time('prep') ?? time('active') ?? time('hands-on') ?? time('hands on');
   if (prep) { out.prepMin = prep; return true; }
 
-  const cook = time('cook') ?? time('bak') ?? time('total');
+  const cook = time('cook') ?? time('bak') ?? time('total') ?? bareTime(line);
   if (cook) { out.cookMin = cook; return true; }
 
   // A bare "45 minutes" line on its own is a cooking time.
@@ -296,6 +298,21 @@ function readMetadata(line, out) {
   }
 
   return false;
+}
+
+/**
+ * A line that is only a time — "Time: 45 minutes", "Total time 1 hr 10 min".
+ * Anchored to the start so the word "time" inside a step can't be mistaken
+ * for the recipe's own timing.
+ */
+function bareTime(line) {
+  const m = /^\s*(?:total\s+)?time\s*:?\s*((?:\d+\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b\s*)+)$/i.exec(line);
+  if (!m) return null;
+  let total = 0;
+  for (const part of m[1].matchAll(/(\d+)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)/gi)) {
+    total += Number(part[1]) * (/^h/i.test(part[2]) ? 60 : 1);
+  }
+  return total || null;
 }
 
 /* ------------------------------------------------------------------ main --- */
