@@ -180,6 +180,13 @@ a { color: var(--accent); }
   max-width: 720px;
   width: 100%;
   margin: 0 auto;
+  /* Full-bleed things inside a screen — the photo at the top of a recipe —
+     reach past this padding to the edge of the column on purpose. Clipping
+     here keeps that overhang from being something an ancestor could ever
+     decide to scroll. Clip rather than hidden: hidden would make this a
+     scroll container, and `overflow: clip` is a no-op on browsers that don't
+     know it, which is exactly the fallback we want. */
+  overflow-x: clip;
 }
 
 .appbar {
@@ -395,18 +402,21 @@ a { color: var(--accent); }
   color: var(--text-3);
 }
 
+/* Chips wrap onto as many rows as they need.
+   This used to be a sideways scroller, and it was the one thing in the app
+   that moved horizontally. On a narrow phone that left half the categories
+   off the right edge, reachable only by a swipe nothing on screen suggested
+   was there — and a filter you can't see is a filter you don't use. */
 .chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 2px 16px 12px;
-  margin: 0 -16px;
+  padding: 2px 0 12px;
 }
-.chips::-webkit-scrollbar { display: none; }
 
 .chip {
   flex: none;
+  max-width: 100%;
   padding: 8px 14px;
   border-radius: var(--pill);
   background: var(--surface);
@@ -414,6 +424,8 @@ a { color: var(--accent); }
   font-size: 13.5px;
   font-weight: 700;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   box-shadow: var(--shadow);
 }
 .chip[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
@@ -692,6 +704,10 @@ a { color: var(--accent); }
 .sheet {
   position: fixed;
   left: 0; right: 0; bottom: 0;
+  /* Kept to the same column as the screens behind it, so a sheet on a laptop
+     isn't a form stretched across 1400px. */
+  max-width: 720px;
+  margin: 0 auto;
   z-index: 70;
   background: var(--bg-2);
   border-radius: 26px 26px 0 0;
@@ -1067,3 +1083,90 @@ a { color: var(--accent); }
   display: grid; place-items: center;
   font-size: 20px;
 }
+
+/* ============================================================
+   Cropper — choosing which part of a photo to keep
+   ============================================================ */
+.cropper { display: flex; flex-direction: column; gap: 12px; }
+
+.crop-stage-wrap {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.crop-stage {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #16120f;
+  /* A drag on the picture is a crop, never a scroll of the sheet under it. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+.crop-stage canvas { display: block; width: 100%; height: 100%; }
+
+.crop-frame {
+  position: absolute;
+  /* Everything outside the rectangle, dimmed in one declaration. */
+  box-shadow: 0 0 0 9999px rgba(18, 12, 8, .58);
+  outline: 2px solid #fff;
+  outline-offset: -1px;
+  cursor: move;
+}
+.crop-frame:focus-visible { outline-color: var(--accent); outline-width: 3px; }
+
+/* Thirds, for framing. Written out rather than tiled: a percentage
+   background-position is relative to the leftover space, not the box, so a
+   repeating gradient lands its lines somewhere other than the thirds. */
+.crop-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right,
+      transparent calc(33.333% - .5px), rgba(255, 255, 255, .3) calc(33.333% - .5px),
+      rgba(255, 255, 255, .3) calc(33.333% + .5px), transparent calc(33.333% + .5px),
+      transparent calc(66.667% - .5px), rgba(255, 255, 255, .3) calc(66.667% - .5px),
+      rgba(255, 255, 255, .3) calc(66.667% + .5px), transparent calc(66.667% + .5px)),
+    linear-gradient(to bottom,
+      transparent calc(33.333% - .5px), rgba(255, 255, 255, .3) calc(33.333% - .5px),
+      rgba(255, 255, 255, .3) calc(33.333% + .5px), transparent calc(33.333% + .5px),
+      transparent calc(66.667% - .5px), rgba(255, 255, 255, .3) calc(66.667% - .5px),
+      rgba(255, 255, 255, .3) calc(66.667% + .5px), transparent calc(66.667% + .5px));
+}
+
+/* The corner grabs. 44px of target for a fingertip, a 16px bracket to look at.
+   Mostly inside the rectangle, so the target survives the stage clipping it
+   when you drag the crop right up to the edge of the picture. */
+.crop-handle { position: absolute; width: 44px; height: 44px; touch-action: none; }
+.crop-handle::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border: 3px solid #fff;
+}
+.crop-nw { left: -14px; top: -14px; cursor: nwse-resize; }
+.crop-ne { right: -14px; top: -14px; cursor: nesw-resize; }
+.crop-sw { left: -14px; bottom: -14px; cursor: nesw-resize; }
+.crop-se { right: -14px; bottom: -14px; cursor: nwse-resize; }
+/* Set in from the outline by a couple of pixels, so a bracket reads as
+   something to grab rather than as the edge getting thicker at the corner. */
+.crop-nw::after { left: 17px; top: 17px; border-right: none; border-bottom: none; border-radius: 4px 0 0 0; }
+.crop-ne::after { right: 17px; top: 17px; border-left: none; border-bottom: none; border-radius: 0 4px 0 0; }
+.crop-sw::after { left: 17px; bottom: 17px; border-right: none; border-top: none; border-radius: 0 0 0 4px; }
+.crop-se::after { right: 17px; bottom: 17px; border-left: none; border-top: none; border-radius: 0 0 4px 0; }
+
+.crop-controls { display: flex; flex-direction: column; gap: 4px; }
+.crop-aspects { padding: 0; }
+.crop-footnote { justify-content: space-between; flex-wrap: wrap; }
+.crop-size { margin: 0; font-variant-numeric: tabular-nums; }
+.crop-reset { padding: 8px 12px; font-size: 13px; flex: none; }
+
+/* The photo picker's own buttons, which wrap rather than run off a narrow
+   phone now that there are three of them. */
+.photo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-actions .btn { flex: 1 1 auto; min-width: 0; padding: 12px 15px; font-size: 14px; }

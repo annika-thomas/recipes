@@ -4,7 +4,8 @@ import { el, svg } from '../util/dom.js';
 import { ICONS, emojiFor } from './icons.js';
 import { formatMinutes, relativeDate, pluralise } from '../util/format.js';
 import { state, averageStars } from '../store.js';
-import { photoUrl, putPhoto } from '../backends/photos.js';
+import { photoUrl, putPhoto, getPhoto } from '../backends/photos.js';
+import { openCropper } from './cropper.js';
 
 /** A row of stars. Interactive when `onPick` is given. */
 export function stars(value, { size = 'small', onPick = null } = {}) {
@@ -73,11 +74,26 @@ export function thumb(record, className = 'recipe-thumb') {
 
 /**
  * A button that picks a photo, stores it, and hands back its id.
- * Shows the current one, with a way to remove it.
+ * Shows the current one, with a way to recrop it and a way to remove it.
+ *
+ * Every photo goes through the cropper on the way in. A phone camera frames
+ * for the room and the app shows the result as a wide strip and a small
+ * square, so being asked once which part matters beats the app guessing
+ * "the middle" every time it draws it.
  */
 export function photoPicker({ photoId = null, onChange, label = 'Add a photo' } = {}) {
   const wrap = el('div', { style: { marginBottom: '14px' } });
   let current = photoId;
+
+  const busyWith = (message) => {
+    replaceChildren(wrap);
+    wrap.append(el('p.tiny.muted', { text: message }));
+  };
+
+  const failed = (message) => {
+    render();
+    wrap.append(el('p.tiny', { text: message, style: { color: 'var(--danger)' } }));
+  };
 
   const render = () => {
     replaceChildren(wrap);
@@ -94,8 +110,10 @@ export function photoPicker({ photoId = null, onChange, label = 'Add a photo' } 
         if (url) preview.style.backgroundImage = `url("${url}")`;
       }).catch(() => {});
 
-      wrap.append(preview, el('div.row', { style: { gap: '8px' } },
-        el('button.btn.btn-ghost.grow', { type: 'button', onclick: pick }, 'Change photo'),
+      wrap.append(preview, el('div.photo-actions',
+        el('button.btn.btn-ghost', { type: 'button', onclick: pick }, 'Change photo'),
+        el('button.btn.btn-ghost', { type: 'button', onclick: recrop },
+          svg(ICONS.crop, { size: 16 }), 'Crop'),
         el('button.btn.btn-ghost', {
           type: 'button',
           style: { color: 'var(--danger)' },
@@ -108,6 +126,7 @@ export function photoPicker({ photoId = null, onChange, label = 'Add a photo' } 
       svg(ICONS.camera, { size: 18 }), label));
   };
 
+  /** Pick a file, choose the part of it that matters, then store that. */
   function pick() {
     const picker = el('input', {
       type: 'file',
@@ -122,20 +141,62 @@ export function photoPicker({ photoId = null, onChange, label = 'Add a photo' } 
       picker.remove();
       if (!file) return;
 
-      const busy = el('p.tiny.muted', { text: 'Saving that photo…' });
-      replaceChildren(wrap);
-      wrap.append(busy);
+      // Cancelling the cropper cancels the photo, not just the crop: the
+      // previous one is still there, and silently swapping it for a photo
+      // whose framing you just backed out of would be a strange reward.
+      const crop = await openCropper({ source: file, confirmLabel: 'Use this photo' });
+      if (!crop) { render(); return; }
 
+      busyWith('Saving that photo…');
       try {
-        current = await putPhoto(file);
+        current = await putPhoto(file, { crop });
         onChange(current);
+        render();
       } catch (err) {
-        wrap.append(el('p.tiny', { text: err.message, style: { color: 'var(--danger)' } }));
+        failed(err.message);
       }
-      render();
     }, { once: true });
 
     picker.click();
+  }
+
+  /**
+   * Recrop the photo that's already stored.
+   *
+   * It crops what was saved rather than the original file, which is gone by
+   * now — so this trims, it doesn't recover anything the first crop cut off.
+   * The result is a new photo rather than an overwrite, because the editor
+   * hasn't saved yet and backing out of it shouldn't have changed the picture
+   * on the recipe.
+   */
+  async function recrop() {
+    const id = current;
+    if (!id) return;
+
+    busyWith('Opening that photo…');
+    let blob;
+    try {
+      blob = await getPhoto(id);
+    } catch {
+      blob = null;
+    }
+    if (!blob) {
+      failed("That photo isn't on this device any more.");
+      return;
+    }
+
+    render();
+    const crop = await openCropper({ source: blob, title: 'Crop this photo' });
+    if (!crop) return;
+
+    busyWith('Cropping…');
+    try {
+      current = await putPhoto(blob, { crop });
+      onChange(current);
+      render();
+    } catch (err) {
+      failed(err.message);
+    }
   }
 
   render();

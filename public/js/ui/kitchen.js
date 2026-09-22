@@ -194,6 +194,11 @@ function suggestPane(onOpen, rerender) {
 
   const pane = el('div');
 
+  // Only categories something in the box actually belongs to. A chip for a
+  // category with no recipes can only ever return nothing, and now that the
+  // chips wrap instead of scrolling, every dead one costs a row of screen.
+  const used = new Set(state.recipes.map((recipe) => recipe.category));
+
   const chips = el('div.chips',
     el('button.chip', {
       type: 'button',
@@ -201,15 +206,17 @@ function suggestPane(onOpen, rerender) {
       text: 'Anything',
       onclick: () => { view.category = null; rerender(); },
     }),
-    state.categories.map((category) => el('button.chip', {
-      type: 'button',
-      'aria-pressed': String(view.category === category.id),
-      text: category.label,
-      onclick: () => {
-        view.category = view.category === category.id ? null : category.id;
-        rerender();
-      },
-    })));
+    state.categories
+      .filter((category) => used.has(category.id) || view.category === category.id)
+      .map((category) => el('button.chip', {
+        type: 'button',
+        'aria-pressed': String(view.category === category.id),
+        text: category.label,
+        onclick: () => {
+          view.category = view.category === category.id ? null : category.id;
+          rerender();
+        },
+      })));
 
   const results = el('div', spinner('Working out what you can make…'));
   pane.append(chips, results);

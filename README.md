@@ -33,6 +33,14 @@ about a minute.
 cooked it — so the calendar shows what it actually looked like that Tuesday,
 not what it's supposed to look like.
 
+Every photo goes through a cropper on the way in: drag the rectangle, drag its
+corners, or lock it to the shape the app shows it in. A phone frames for the
+room, and the app shows the result as a wide strip at the top of the recipe and
+a small square in the list, so being asked once which part matters beats the
+app guessing "the middle" forever. Leave it alone and you keep the whole
+picture. **Crop** on a photo that's already saved trims it again — though that
+crops what was stored, not the original, which is long gone.
+
 **Cooking from it.** Scale a recipe up or down and every quantity follows,
 rendered as fractions (`1½ cup`, not `1.5 cup`). Tick ingredients and steps off
 as you go. Ingredients you already have get a green dot. **Cook mode** puts one
@@ -168,9 +176,9 @@ npm run dev         # http://localhost:8787
 ```
 
 - `npm test` runs the tests: the parser against a dozen real recipe formats,
-  the device storage backend, and the ingredient matcher. Those are the parts
-  that rot quietly — when they break you get a recipe with no steps rather than
-  an error.
+  the device storage backend, the ingredient matcher, and the crop arithmetic.
+  Those are the parts that rot quietly — when they break you get a recipe with
+  no steps, or the wrong half of a photo, rather than an error.
 - `npm run db:reset:local` empties the local server database.
 
 ### Where the things you'll want to change live
@@ -180,6 +188,8 @@ npm run dev         # http://localhost:8787
 | Colours, spacing, the whole look | `public/css/app.css` — the `:root` block at the top is the palette, and the dark theme mirrors it |
 | The categories | `CATEGORIES` in `public/js/util/recipe.js`, and the matching emoji in `public/js/ui/icons.js` |
 | How pasted text is read | `public/js/util/parseRecipe.js` — units, step verbs and the scoring all live at the top |
+| The crop rectangle and its aspect ratios | `public/js/ui/cropper.js` — `ASPECTS` at the top is the list of shapes |
+| How big a stored photo gets | `MAX_EDGE` and `QUALITY` in `public/js/backends/photos.js` |
 | Which staples "add the usual" adds | `DEFAULT_STAPLES` in `public/js/util/recipe.js` |
 | How recipes are sorted by default | `SORTS` and `sortRecipes` in `public/js/ui/library.js` |
 | Storage locations (fridge, freezer…) | `LOCATIONS` in `public/js/util/recipe.js` |
@@ -196,16 +206,18 @@ public/                    the app: a static PWA, no build step
   config.js                which storage this copy uses; the Pages build pins it
   js/store.js              all app state, and the choice of backend
   js/backends/local.js     the whole box in localStorage — what Pages runs
-  js/backends/photos.js    pictures, in IndexedDB, shrunk on the way in
+  js/backends/photos.js    pictures, in IndexedDB, cropped and shrunk on the way in
   js/backends/server.js    the same surface over HTTP — what Cloudflare runs
   js/util/parseRecipe.js   pasted text -> a recipe
   js/util/recipe.js        what a recipe IS — imported by both halves
   js/util/match.js         ingredient matching — imported by both halves
+  js/util/image.js         decoding a picked photo, and the crop rectangle on it
+  js/ui/cropper.js         choosing which part of a photo to keep
   js/ui/                   one file per screen, unaware of which backend is live
 
 worker/                    the optional server, for sharing between two phones
 schema.sql                 its database
-test/                      the parser, the device backend, the matcher
+test/                      the parser, the device backend, the matcher, the crop maths
 ```
 
 No framework, no build step. Wrangler bundles the Worker; the browser loads the

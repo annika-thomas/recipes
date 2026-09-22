@@ -10,7 +10,14 @@
  * shoots 4MB images, and a picture of dinner does not need to be one. It also
  * quietly solves HEIC: Safari will decode it to a canvas happily, it just won't
  * hand the file over in a format anything else can read.
+ *
+ * Cropping happens here too, in the same pass. Storing the whole photo and
+ * cropping it on the way out would mean every screen had to agree about the
+ * rectangle, and would keep pixels nobody asked for on a device that's short
+ * of room. What you chose is what gets saved.
  */
+
+import { decodeImage, cropBox } from '../util/image.js';
 
 const DB_NAME = 'kitchen-photos';
 const STORE = 'photos';
@@ -69,36 +76,55 @@ function newPhotoId() {
 }
 
 /**
- * Shrink and re-encode, so a recipe box doesn't fill a phone.
- * Falls back to the original file if the browser can't decode it for canvas.
+ * Take the chosen part of the picture, shrink it, and re-encode it.
+ *
+ * `crop` is a rectangle in fractions of the image, or null for all of it —
+ * see util/image.js for why fractions. MAX_EDGE applies to the crop rather
+ * than to the original, so cropping in tight keeps the detail it found.
+ *
+ * Falls back to storing the original file if the browser can't decode it at
+ * all, which loses the crop but keeps the photo. That's the right way round:
+ * an uncropped picture of dinner is a small annoyance, and no picture is the
+ * evening gone.
  */
-async function shrink(file) {
+async function shrink(file, crop) {
+  let image = null;
   try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-    const width = Math.round(bitmap.width * scale);
-    const height = Math.round(bitmap.height * scale);
+    image = await decodeImage(file);
+    const box = cropBox(crop, image.width, image.height);
+
+    const scale = Math.min(1, MAX_EDGE / Math.max(box.width, box.height));
+    const width = Math.max(1, Math.round(box.width * scale));
+    const height = Math.max(1, Math.round(box.height * scale));
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
-    bitmap.close?.();
+    canvas.getContext('2d').drawImage(
+      image.drawable,
+      box.x, box.y, box.width, box.height,
+      0, 0, width, height,
+    );
 
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', QUALITY));
     if (blob) return blob;
   } catch {
     // An old browser, or a format canvas won't take.
+  } finally {
+    image?.release();
   }
   return file;
 }
 
-/** Store a picked file. Returns the id to put on the recipe or the cook. */
-export async function putPhoto(file) {
+/**
+ * Store a picked file. Returns the id to put on the recipe or the cook.
+ * `crop` comes from ui/cropper.js; without one the whole picture is kept.
+ */
+export async function putPhoto(file, { crop = null } = {}) {
   if (!file) throw new Error('No photo came through.');
   if (!/^image\//i.test(file.type || '')) throw new Error("That file isn't an image.");
 
-  const blob = await shrink(file);
+  const blob = await shrink(file, crop);
   const id = newPhotoId();
 
   try {
@@ -128,6 +154,19 @@ export async function photoUrl(id) {
     const url = URL.createObjectURL(blob);
     urls.set(id, url);
     return url;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The stored blob itself, for re-cropping a photo that's already saved.
+ * `photoUrl` is the right thing for showing one; this is for reading it back.
+ */
+export async function getPhoto(id) {
+  if (!id) return null;
+  try {
+    return (await transact('readonly', (store) => store.get(id))) || null;
   } catch {
     return null;
   }
