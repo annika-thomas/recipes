@@ -12,7 +12,8 @@ export function stars(value, { size = 'small', onPick = null } = {}) {
 
   for (let i = 1; i <= 5; i += 1) {
     const filled = value >= i - 0.25;
-    const star = svg(ICONS.star, { fill: filled });
+    // Solid either way; an empty star is just a grey one.
+    const star = svg(ICONS.star, { fill: true });
     if (!filled) star.classList.add('off');
 
     if (onPick) {

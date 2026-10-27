@@ -228,6 +228,20 @@ a { color: var(--accent); }
 .appbar h1 { font-size: 20px; letter-spacing: -0.01em; flex: 1; text-align: center; }
 /* Keep the title centred on the screen when there's a button on the right. */
 .appbar h1:has(+ .row .icon-btn) { padding-left: 48px; }
+
+/* On a recipe the bar holds the recipe's name, shown once the big title has
+   scrolled away. */
+.appbar-recipe .appbar-title {
+  padding-left: 0;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+.past-title .appbar-recipe .appbar-title { opacity: 1; }
 .appbar .sub { color: var(--text-2); font-size: 13.5px; font-weight: 600; }
 
 .icon-btn {
@@ -588,6 +602,7 @@ a { color: var(--accent); }
 .stars svg { width: 14px; height: 14px; }
 .stars.big svg { width: 30px; height: 30px; }
 .stars .off { color: var(--line); }
+.stars button { padding: 0 1px; }
 :root[data-theme='dark'] .stars .off { color: var(--surface-2); }
 
 .rating-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
@@ -656,46 +671,167 @@ a { color: var(--accent); }
 .ing-list { list-style: none; margin: 0; padding: 0; }
 .ing-list li {
   display: flex;
-  gap: 11px;
-  align-items: baseline;
-  padding: 11px 2px;
-  border-bottom: 1px solid var(--line-soft);
-  font-size: 16px;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 9px 0;
+  font-size: 17px;
+  line-height: 1.45;
+  cursor: pointer;
 }
-.ing-list li:last-child { border-bottom: none; }
-.ing-list .qty { font-weight: 700; color: var(--text); min-width: 72px; flex: none; font-variant-numeric: tabular-nums; }
-.ing-list .note { color: var(--text-2); font-weight: 500; }
-.ing-list li.ticked { opacity: .42; }
-.ing-list li.ticked .item { text-decoration: line-through; }
-.ing-group { font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--text); padding: 16px 2px 2px; }
-.ing-list li.have-it .qty::after {
+/* A box to tick, like a printed shopping list. */
+.ing-list .box {
+  width: 22px; height: 22px;
+  flex: none;
+  margin-top: 1px;
+  border: 1.5px solid var(--line);
+  border-radius: 3px;
+  display: grid; place-items: center;
+}
+.ing-list li.ticked .box { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.ing-list .qty { font-variant-numeric: tabular-nums; }
+.ing-list .note { color: var(--text-2); }
+.ing-list li.ticked .grow { opacity: .45; text-decoration: line-through; }
+.ing-group {
+  font-family: var(--slab);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text);
+  padding: 20px 0 4px;
+  cursor: default;
+}
+/* Already in the kitchen: a small green dot after the name. */
+.ing-list li.have-it .item::after {
   content: '';
   display: inline-block;
-  width: 6px; height: 6px;
-  margin-left: 6px;
+  width: 7px; height: 7px;
+  margin-left: 7px;
   border-radius: 50%;
   background: var(--olive);
   vertical-align: middle;
+}
+
+/* Heavy rule, then the heading: how each part of the recipe starts. */
+.ruled-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-top: 4px solid var(--text);
+  margin-top: 34px;
+  padding-top: 14px;
+}
+.ruled-head .section-title { margin: 0; font-size: 19px; }
+
+.yield-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin: 16px 0 8px;
+}
+.yield-row .label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.yield-row .value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 19px;
+  font-weight: 500;
 }
 
 .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
 .steps li {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 2px;
-  font-size: 17px;
+  gap: 6px;
+  padding: 14px 0 20px;
+  cursor: pointer;
+}
+.steps li .grow {
+  font-family: var(--serif);
+  font-size: 19px;
   line-height: 1.6;
 }
 /* "STEP 1" over each step, the way a printed recipe does it. */
 .steps .n {
-  font-family: var(--slab);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: .07em;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: .09em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--text);
 }
+
+/* Overview | Cook Mode */
+.mode-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 18px 0 10px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--pill);
+}
+.mode-switch button {
+  flex: 1;
+  padding: 11px;
+  border-radius: var(--pill);
+  font-size: 17px;
+  font-weight: 500;
+}
+.mode-switch button[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
+
+/* Where the method ends: mark it cooked, rate it. */
+.cooked-row-wrap { border-top: 4px solid var(--text); margin-top: 18px; }
+.cooked-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.mark-cooked {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.mark-cooked .tick {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--line);
+  color: #fff;
+}
+.mark-cooked .tick.done { background: var(--olive); }
+.cooked-row .rate { display: flex; align-items: center; gap: 6px; font-size: 17px; font-weight: 600; }
+.cooked-row .rate .stars svg { width: 24px; height: 24px; }
+.others-rated {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 10px 0 0;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.notes { padding-top: 22px; }
+.notes-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.notes-empty { margin: 0; color: var(--text-3); font-size: 17px; line-height: 1.5; }
 .steps .n::before { content: 'Step '; }
 .section-title, .steps .n, .timeline-month, .cookmode .stepno { font-variant-numeric: lining-nums; }
 .steps li.ing-group { padding-top: 18px; }

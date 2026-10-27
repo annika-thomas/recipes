@@ -86,9 +86,10 @@ function draw() {
   }
 
   if (route.name === 'recipe') {
+    appbar.classList.add('appbar-recipe');
     appbar.append(
       el('button.icon-btn', { type: 'button', 'aria-label': 'Back', onclick: back }, svg(ICONS.back, { size: 19 })),
-      el('span.grow'),
+      el('h1.appbar-title', { text: result.title || '', 'aria-hidden': 'true' }),
     );
   } else {
     titleNode.textContent = route.name === 'recipes' && state.person
@@ -103,6 +104,8 @@ function draw() {
   replace(screen, result.body);
   replace(app, appbar, screen, tabbar(route));
 
+  watchTitle();
+  titleWatch();
   result.focus?.();
   if (pendingFocus) pendingFocus = null;
 
@@ -112,6 +115,21 @@ function draw() {
     go('recipes', { replaceState: true });
     openAddSheet({ onSaved: onRecipeSaved });
   }
+}
+
+/**
+ * On a recipe, the title slides into the top bar once the big one has
+ * scrolled out of sight — so you always know what you're reading.
+ */
+let titleWatch = null;
+function watchTitle() {
+  if (titleWatch) return;
+  titleWatch = () => {
+    const big = document.querySelector('.detail-head h2');
+    const past = Boolean(big) && big.getBoundingClientRect().bottom < 70;
+    document.body.classList.toggle('past-title', past);
+  };
+  window.addEventListener('scroll', titleWatch, { passive: true });
 }
 
 function renderRoute(route, screen) {

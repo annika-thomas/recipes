@@ -12,7 +12,7 @@
  * spinner. The one exception is photos, which are immutable once written.
  */
 
-const SHELL = 'kitchen-shell-v5';
+const SHELL = 'kitchen-shell-v6';
 const PHOTOS = 'kitchen-photos-v1';
 
 /** How long to wait on a slow network before opening from the cache instead. */

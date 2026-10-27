@@ -1,9 +1,10 @@
 /**
  * One recipe, open.
  *
- * The page is built for the moment you're actually standing at the counter:
- * scale first, ingredients you can tick off, steps you can tick off, and the
- * "we made this" button where your thumb already is. Ratings and notes live
+ * Laid out like a newspaper's recipe page, and built for the moment you're
+ * standing at the counter: yield and scale over the ingredients, boxes to
+ * tick them off, numbered steps you can tick off too, then "mark as cooked"
+ * and a rating right where the method ends. Notes and the cook log live
  * below, because they're for afterwards.
  */
 
@@ -57,15 +58,16 @@ export function renderRecipe(id, { onBack, rerender }) {
     body: el('div',
       hero(recipe),
       head(recipe),
-      facts(recipe, scale),
-      scaleRow(recipe, view, rerender),
+      facts(recipe),
+      ingredientsHead(recipe, view, rerender),
       ingredients(recipe, view, rerender),
       steps(recipe, view, rerender),
-      cookButtons(recipe, rerender),
-      ratings(recipe, rerender),
+      cookedRow(recipe, rerender),
       notes(recipe, rerender),
       cookLog(recipe, rerender),
       dangerZone(recipe, onBack, rerender)),
+    // Shown in the top bar once the big title has scrolled away.
+    title: recipe.title,
     appbarActions: [
       iconButton('pencil', 'Edit this recipe', () => openEditor({ recipe, onSaved: rerender })),
     ],
@@ -115,11 +117,12 @@ function sourceLine(recipe) {
   return bits.length ? bits : null;
 }
 
-function facts(recipe, scale) {
+/** Prep, cook and total — how much it makes sits over the ingredients instead. */
+function facts(recipe) {
   const items = [];
   if (recipe.prepMin) items.push(['Prep', formatMinutes(recipe.prepMin)]);
   if (recipe.cookMin) items.push(['Cook', formatMinutes(recipe.cookMin)]);
-  if (recipe.servings) items.push(['Makes', formatYield(recipe, scale)]);
+  if (recipe.prepMin && recipe.cookMin) items.push(['Total', formatMinutes(recipe.prepMin + recipe.cookMin)]);
   if (!items.length) return null;
 
   return el('div.facts', items.map(([label, value]) => el('div.fact',
@@ -131,22 +134,44 @@ function facts(recipe, scale) {
 
 const STEPS = [0.5, 1, 1.5, 2, 3, 4];
 
-function scaleRow(recipe, view, rerender) {
-  if (!recipe.ingredients.length) return null;
+/** A heading under a heavy rule, the way each part of a printed recipe starts. */
+function ruledHead(title, action = null) {
+  return el('div.ruled-head',
+    el('h2.section-title', { text: title }),
+    action);
+}
 
-  const move = (direction) => {
-    const index = STEPS.indexOf(view.scale);
-    const next = STEPS[Math.min(STEPS.length - 1, Math.max(0, (index === -1 ? 1 : index) + direction))];
-    view.scale = next;
-    rerender();
-  };
+/** INGREDIENTS, then what it makes on the left and how much of it on the right. */
+function ingredientsHead(recipe, view, rerender) {
+  const yieldText = formatYield(recipe, view.scale);
+  const canScale = recipe.ingredients.length > 0;
+  if (!canScale && !yieldText) return null;
 
-  return el('div.row-between', { style: { margin: '18px 2px 0' } },
-    el('span.section-title', { text: 'Ingredients', style: { margin: '0' } }),
-    el('div.scaler',
-      el('button', { type: 'button', 'aria-label': 'Less', onclick: () => move(-1) }, svg(ICONS.minus, { size: 15 })),
-      el('span.value', { text: view.scale === 1 ? 'As written' : `${formatQty(view.scale)}×` }),
-      el('button', { type: 'button', 'aria-label': 'More', onclick: () => move(1) }, svg(ICONS.plus, { size: 15 }))));
+  return el('div',
+    ruledHead('Ingredients'),
+    el('div.yield-row',
+      el('div',
+        el('div.label', { text: 'Yield' }),
+        el('div.value', { text: yieldText || '—' })),
+      canScale ? el('div', { style: { textAlign: 'right' } },
+        el('div.label', { text: 'Scale' }),
+        el('button.value', {
+          type: 'button',
+          'aria-label': 'Change the scale',
+          onclick: () => openScaleSheet(view, rerender),
+        }, `${formatQty(view.scale)}x`, svg(ICONS.down, { size: 18 }))) : null));
+}
+
+function openScaleSheet(view, rerender) {
+  const sheet = openSheet({
+    title: 'Scale the recipe',
+    body: el('div', STEPS.map((step) => el('button.option', {
+      type: 'button',
+      onclick: () => { view.scale = step; sheet.close(); rerender(); },
+    },
+      el('div.grow', el('h4', { text: step === 1 ? '1x — as written' : `${formatQty(step)}x` })),
+      view.scale === step ? svg(ICONS.check, { size: 18 }) : null))),
+  });
 }
 
 /* ---------------------------------------------------------- ingredients --- */
@@ -171,6 +196,8 @@ function ingredients(recipe, view, rerender) {
     const amount = formatAmount(ing, view.scale);
 
     list.append(el(`li${ticked ? '.ticked' : ''}${inPantry ? '.have-it' : ''}`, {
+      role: 'checkbox',
+      'aria-checked': String(ticked),
       onclick: () => {
         if (ticked) view.tickedIngredients.delete(index);
         else view.tickedIngredients.add(index);
@@ -178,8 +205,9 @@ function ingredients(recipe, view, rerender) {
       },
       title: inPantry ? "You've got this in" : undefined,
     },
-      el('span.qty', { text: amount || '—' }),
+      el('span.box', ticked ? svg(ICONS.check, { size: 14, width: 3 }) : null),
       el('span.grow',
+        amount ? el('span.qty', { text: `${amount} ` }) : null,
         el('span.item', { text: ing.item }),
         ing.note ? el('span.note', { text: `, ${ing.note}` }) : null)));
   });
@@ -192,7 +220,7 @@ function ingredients(recipe, view, rerender) {
 function steps(recipe, view, rerender) {
   if (!recipe.steps.length) {
     return el('div',
-      el('div.section-title', { text: 'Method' }),
+      ruledHead('Preparation'),
       el('p.muted.tiny', { style: { padding: '0 2px' }, text: recipe.sourceNote || 'No steps came through — tap the pencil to write them in.' }));
   }
 
@@ -218,30 +246,52 @@ function steps(recipe, view, rerender) {
   });
 
   return el('div',
-    el('div.row-between', { style: { margin: '26px 2px 6px' } },
-      el('span.section-title', { text: 'Method', style: { margin: 0 } }),
-      el('button.tiny', {
+    ruledHead('Preparation'),
+    // Overview is this page; Cook Mode is the one-step-at-a-time screen.
+    el('div.mode-switch',
+      el('button', { type: 'button', 'aria-pressed': 'true', text: 'Overview' }),
+      el('button', {
         type: 'button',
-        style: { color: 'var(--accent)', fontWeight: '700' },
+        'aria-pressed': 'false',
+        text: 'Cook Mode',
         onclick: () => openCookMode(recipe, session(recipe.id).scale),
-      }, 'Cook mode →')),
+      })),
     recipe.sourceNote ? el('p.tiny.muted', { style: { margin: '0 2px 8px' }, text: recipe.sourceNote }) : null,
     list);
 }
 
 /* ----------------------------------------------------------- cook / rate --- */
 
-function cookButtons(recipe, rerender) {
-  return el('div.row', { style: { marginTop: '22px', gap: '10px' } },
-    el('button.btn.btn-primary.grow', {
-      type: 'button',
-      onclick: () => openCookSheet(recipe, rerender),
-    }, svg(ICONS.flame, { size: 18 }), 'We made this'),
-    el('button.btn', {
-      type: 'button',
-      'aria-label': 'Cook mode',
-      onclick: () => openCookMode(recipe, session(recipe.id).scale),
-    }, svg(ICONS.book, { size: 18 })));
+/** Where the method ends: say you made it, and say what you thought. */
+function cookedRow(recipe, rerender) {
+  const made = (recipe.cooks?.length ?? recipe.timesCooked) || 0;
+  const others = Object.entries(recipe.ratings || {})
+    .filter(([person, value]) => person !== state.person && value);
+
+  return el('div.cooked-row-wrap',
+    el('div.cooked-row',
+      el('button.mark-cooked', {
+        type: 'button',
+        'aria-label': made ? `Mark as cooked again — made ${pluralise(made, 'time')}` : 'Mark as cooked',
+        onclick: () => openCookSheet(recipe, rerender),
+      },
+        made ? `Made ${pluralise(made, 'time').replace(/^1 time$/, 'once')}` : 'Mark as cooked',
+        el(`span.tick${made ? '.done' : ''}`, svg(ICONS.check, { size: 15, width: 3 }))),
+      el('div.rate',
+        el('span', { text: 'Rate' }),
+        stars(recipe.ratings?.[state.person] || 0, {
+          onPick: async (value) => {
+            try {
+              await rate(recipe.id, value);
+              rerender();
+            } catch (err) {
+              toast(err.message, { bad: true });
+            }
+          },
+        }))),
+    others.length
+      ? el('div.others-rated', others.map(([person, value]) => el('span', `${person} `, stars(value))))
+      : null);
 }
 
 export function openCookSheet(recipe, onDone) {
@@ -280,41 +330,13 @@ export function openCookSheet(recipe, onDone) {
   };
 }
 
-function ratings(recipe, rerender) {
-  const people = new Set([state.person, ...Object.keys(recipe.ratings || {})].filter(Boolean));
-
-  return el('div',
-    el('div.section-title', { text: 'What you thought' }),
-    el('div.card', [...people].map((person) => el('div.rating-row',
-      el('span.who', { text: person === state.person ? `${person} (you)` : person }),
-      person === state.person
-        ? stars(recipe.ratings?.[person] || 0, {
-          size: 'big',
-          onPick: async (value) => {
-            try {
-              await rate(recipe.id, value);
-              rerender();
-            } catch (err) {
-              toast(err.message, { bad: true });
-            }
-          },
-        })
-        : stars(recipe.ratings?.[person] || 0, { size: 'big' })))));
-}
-
 /* ---------------------------------------------------------------- notes --- */
 
 function notes(recipe, rerender) {
   const list = recipe.notes || [];
 
-  return el('div',
-    el('div.row-between', { style: { margin: '26px 2px 10px' } },
-      el('span.section-title', { text: 'Notes', style: { margin: 0 } }),
-      el('button.tiny', {
-        type: 'button',
-        style: { color: 'var(--accent)', fontWeight: '700' },
-        onclick: () => openNoteSheet(recipe, rerender),
-      }, '+ Add')),
+  return el('div.notes',
+    el('h3.notes-head', svg(ICONS.note, { size: 22 }), 'Your notes'),
     list.length
       ? el('div.stack', list.map((note) => el('div.note-item',
         el('div.row-between',
@@ -338,7 +360,12 @@ function notes(recipe, rerender) {
             }, svg(ICONS.trash, { size: 14 }))
             : null),
         el('p', { text: note.body }))))
-      : el('p.tiny.muted', { style: { padding: '0 2px' }, text: 'Nothing yet. "Needed 10 more minutes", "double the garlic" — that kind of thing.' }));
+      : el('p.notes-empty', { text: 'No notes on this recipe yet — "needed 10 more minutes", "double the garlic", that kind of thing.' }),
+    el('button.btn.btn-block', {
+      type: 'button',
+      style: { marginTop: '16px' },
+      onclick: () => openNoteSheet(recipe, rerender),
+    }, 'Add a note'));
 }
 
 function openNoteSheet(recipe, rerender) {
@@ -374,7 +401,7 @@ function cookLog(recipe, rerender) {
   if (!cooks.length) return null;
 
   return el('div',
-    el('div.section-title', { text: `Made ${pluralise(cooks.length, 'time')}` }),
+    ruledHead(`Made ${pluralise(cooks.length, 'time')}`),
     el('div.cook-log', cooks.map((cook) => el('div.entry',
       cook.photoId ? thumb(cook, 'cook-thumb') : null,
       el('div.grow',
