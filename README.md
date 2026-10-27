@@ -16,10 +16,10 @@ including screenshots and photos of cookbook pages — are read by Claude.
 
 ## What it does
 
-**Paste a screenshot, a photo, or a wall of text.** With a Claude API key set
-(**Settings → Read recipes with Claude**), the paste box takes images too: paste
-a screenshot straight from the clipboard, or add photos of a cookbook page or a
-handwritten card. Claude reads the text and the images together and fills in the
+**Paste a link, a screenshot, a photo, or a wall of text.** With a Claude API
+key set (**Settings → Read recipes with Claude**), paste a link and Claude reads
+the recipe off the page; or paste a screenshot straight from the clipboard, or
+add photos of a cookbook page or a handwritten card. Claude reads the text and the images together and fills in the
 form, and says at the top what it couldn't read or had to guess.
 
 **No key? Paste anything recipe-shaped.** A message from a friend, a block of text off a
@@ -72,11 +72,12 @@ device for anyone to get at.
 
 ### Sharing a recipe into it
 
-Select the recipe text on a page, share it, and land in the paste box with it
-already filled in. One Shortcut does that:
+Share a recipe page (or text you've selected on one) and land in the paste box
+with it already filled in. With Claude connected, sharing the page's link is
+enough — it reads the recipe off the page. One Shortcut does that:
 
 1. **Shortcuts** app → **+** → the **ⓘ** at the bottom → turn on **Show in Share
-   Sheet**, and under *Share Sheet Types* leave only **Text** ticked.
+   Sheet**, and under *Share Sheet Types* leave only **Text** and **URLs** ticked.
 2. Add the action **URL Encode**, with **Shortcut Input** as its input.
 3. Add the action **Text** and set it to:
    ```
@@ -86,7 +87,7 @@ already filled in. One Shortcut does that:
 4. Add **Open URLs**, taking the Text from step 3.
 5. Name it **Save recipe**.
 
-Now: select a recipe on any page → Share → **Save recipe**.
+Now: on any recipe page → Share → **Save recipe** → **Read it with Claude**.
 
 ### Your recipes live on your device
 
@@ -113,8 +114,14 @@ Turn it on under **Settings → Read recipes with Claude** with an API key from
   sent to `api.anthropic.com` and nowhere else — the Pages copy of the app has no
   server that could hold it instead. Anyone using your unlocked phone could use
   it, so give the key a spending limit in the Anthropic console.
+- Saving the key checks it with Anthropic first, so a typo shows up straight
+  away. (It can't check the account has credit — the first read finds that.)
 - Each read is one request to Claude Opus 5.5 with the pasted text and up to six
   images (shrunk to ~1500px first), billed to your key — typically a few cents.
+- A link is fetched by Claude on Anthropic's side, with the API's web fetch
+  tool, and only when you pasted one. Pages behind a login or paywall, and most
+  Instagram and TikTok posts, can't be read that way — screenshot those. If an
+  admin has turned web fetch off for your Anthropic organisation, it says so.
 - It's asked to transcribe, never invent: a quantity that isn't in the source
   comes back blank. The answer is constrained to the app's recipe shape, so it
   drops into the same editor the parser fills.

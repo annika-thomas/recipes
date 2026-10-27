@@ -65,7 +65,7 @@ export const RECIPE_SCHEMA = {
   additionalProperties: false,
   required: [
     'found', 'title', 'description', 'category', 'cuisine', 'servings', 'servingsUnit',
-    'prepMin', 'cookMin', 'ingredients', 'steps', 'tags', 'sourceNote', 'doubts',
+    'prepMin', 'cookMin', 'ingredients', 'steps', 'tags', 'sourceNote', 'sourceUrl', 'doubts',
   ],
   properties: {
     found: { type: 'boolean' },
@@ -106,13 +106,16 @@ export const RECIPE_SCHEMA = {
     },
     tags: { type: 'array', items: { type: 'string' } },
     sourceNote: nullable('string'),
+    sourceUrl: nullable('string'),
     doubts: nullable('string'),
   },
 };
 
 const SYSTEM = `You turn recipes into structured data for a personal recipe journal.
 
-The input is whatever someone pasted: text copied from a website or a message, screenshots, or photos of a cookbook page or a handwritten card. Several images may be pages of the same recipe. Read all of it and return one recipe.
+The input is whatever someone pasted: text copied from a website or a message, screenshots, photos of a cookbook page or a handwritten card, or a link to a recipe page. Several images may be pages of the same recipe. Read all of it and return one recipe.
+
+If there is a link, fetch it with web_fetch and read the recipe from the page. Fetch only links the person gave you, and only the one the recipe is on. If the page can't be fetched or has no recipe on it (a login wall, a paywall, a video with no written recipe), say so in doubts and use whatever else was pasted.
 
 Transcribe; never invent. If a quantity, time or serving count isn't in the source, return null for it rather than a typical value. Keep the author's wording for steps, but drop step numbers, ads, life stories, nutrition panels and comments.
 
@@ -125,6 +128,8 @@ Ingredients, one per line in the source:
 Steps: one entry per step, with group set to the sub-heading it sits under, or null.
 
 servingsUnit is "servings" unless the recipe counts something else ("cookies", "loaves"). prepMin and cookMin are whole minutes. category is your best fit from the allowed list. tags are a few lowercase words that would help find it again ("vegetarian", "one-pot", "quick").
+
+sourceUrl is the address of the page the recipe came from, if there was a link, else null.
 
 sourceNote is for tips, storage or make-ahead notes worth keeping from the source, or null. doubts is a short plain sentence on anything you couldn't read or had to guess at — a cut-off photo, an illegible amount, a step that seemed to be missing — or null if it was all clear.
 
@@ -156,6 +161,31 @@ export async function imageForClaude(file) {
   return { media_type: 'image/jpeg', data: btoa(binary) };
 }
 
+/* ----------------------------------------------------------------- links --- */
+
+/** Web addresses in pasted text, so a bare link can be read as a recipe. */
+export function findLinks(text = '') {
+  const found = String(text).match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
+  return [...new Set(found.map((url) => url.replace(/[.,;:!?]+$/, '')))];
+}
+
+/**
+ * Lets Claude load a page someone gave it. Only links in the message can be
+ * fetched — the API enforces that — and a page's worth of text is capped so
+ * one bloated blog post can't run up the bill.
+ */
+const WEB_FETCH = {
+  type: 'web_fetch_20260318',
+  name: 'web_fetch',
+  max_uses: 3,
+  max_content_tokens: 40000,
+  // Claude reads the page; the browser doesn't need it echoed back.
+  response_inclusion: 'excluded',
+};
+
+/** A server tool pausing mid-turn resumes this many times before giving up. */
+const MAX_RESUMES = 3;
+
 /* ----------------------------------------------------------------- read --- */
 
 let sdkPromise = null;
@@ -175,12 +205,14 @@ export function buildContent({ text = '', images = [] }) {
     source: { type: 'base64', media_type: image.media_type, data: image.data },
   }));
   const trimmed = text.trim();
-  content.push({
-    type: 'text',
-    text: trimmed
-      ? `${images.length ? 'Along with the images above, here is' : 'Here is'} the pasted text:\n\n<pasted>\n${trimmed}\n</pasted>`
-      : 'Read the recipe in these images.',
-  });
+  const links = findLinks(trimmed);
+  let ask;
+  if (!trimmed) ask = 'Read the recipe in these images.';
+  else if (links.length && trimmed === links[0]) ask = `Read the recipe at this link:\n\n${links[0]}`;
+  else {
+    ask = `${images.length ? 'Along with the images above, here is' : 'Here is'} the pasted text:\n\n<pasted>\n${trimmed}\n</pasted>`;
+  }
+  content.push({ type: 'text', text: ask });
   return content;
 }
 
@@ -219,6 +251,7 @@ export function toDraft(result) {
     steps,
     tags: (Array.isArray(result?.tags) ? result.tags : []).map(blank).filter(Boolean),
     sourceNote: blank(result?.sourceNote),
+    sourceUrl: /^https?:\/\//i.test(blank(result?.sourceUrl) || '') ? blank(result.sourceUrl) : null,
     doubts: blank(result?.doubts),
     found: result?.found !== false && (ingredients.length > 0 || steps.length > 0),
   };
@@ -246,24 +279,39 @@ export async function readRecipe({ text = '', images = [], apiKey = getApiKey() 
     dangerouslyAllowBrowser: true,
   });
 
+  const messages = [{ role: 'user', content: buildContent({ text, images }) }];
+  const withLink = findLinks(text).length > 0;
+
   let response;
   try {
-    response = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      system: SYSTEM,
-      messages: [{ role: 'user', content: buildContent({ text, images }) }],
-      output_config: {
-        effort: 'medium',
-        format: { type: 'json_schema', schema: RECIPE_SCHEMA },
-      },
-      // If a safety classifier declines, let the API retry on its
-      // recommended fallback model instead of failing the paste.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-    });
+    for (let resumes = 0; ; resumes += 1) {
+      response = await client.beta.messages.create({
+        model: MODEL,
+        max_tokens: 16000,
+        system: SYSTEM,
+        messages,
+        // Only offered when there's a link, so a plain paste can't wander off
+        // to the web.
+        ...(withLink ? { tools: [WEB_FETCH] } : {}),
+        output_config: {
+          effort: 'medium',
+          format: { type: 'json_schema', schema: RECIPE_SCHEMA },
+        },
+        // If a safety classifier declines, let the API retry on its
+        // recommended fallback model instead of failing the paste.
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+      });
+      // A long fetch can pause the turn; sending it back resumes it.
+      if (response.stop_reason !== 'pause_turn' || resumes >= MAX_RESUMES) break;
+      messages.push({ role: 'assistant', content: response.content });
+    }
   } catch (err) {
-    throw new Error(describeError(Anthropic, err));
+    throw new Error(describeError(Anthropic, err, { withLink }));
+  }
+
+  if (response.stop_reason === 'pause_turn') {
+    throw new Error("Reading that page took too long. Try again, or paste a screenshot instead.");
   }
 
   if (response.stop_reason === 'refusal') {
@@ -273,7 +321,8 @@ export async function readRecipe({ text = '', images = [], apiKey = getApiKey() 
     throw new Error('That recipe was too long to read in one go. Try pasting it in two halves.');
   }
 
-  const block = response.content.find((b) => b.type === 'text');
+  // With a fetch there can be blocks before the answer; the answer is last.
+  const block = response.content.findLast((b) => b.type === 'text');
   let parsed;
   try {
     parsed = JSON.parse(block?.text ?? '');
@@ -283,7 +332,31 @@ export async function readRecipe({ text = '', images = [], apiKey = getApiKey() 
   return toDraft(parsed);
 }
 
-function describeError(Anthropic, err) {
+/**
+ * Check a key works before it's saved, so a typo turns up on the settings
+ * screen rather than halfway through adding a recipe. Looking up the model is
+ * free and proves both that the key is real and that it can use the model.
+ * It can't tell whether the account has credit — only a real read can.
+ */
+export async function checkApiKey(apiKey) {
+  let Anthropic;
+  try {
+    Anthropic = await loadSdk();
+  } catch {
+    throw new Error("Couldn't reach Anthropic to check the key — are you online?");
+  }
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 0 });
+  try {
+    await client.models.retrieve(MODEL);
+  } catch (err) {
+    if (err instanceof Anthropic.NotFoundError) {
+      throw new Error("That key works, but it can't use Claude Opus 5.5. Check your Anthropic account.");
+    }
+    throw new Error(describeError(Anthropic, err));
+  }
+}
+
+function describeError(Anthropic, err, { withLink = false } = {}) {
   if (err instanceof Anthropic.AuthenticationError) {
     return 'That API key was turned down. Check it in Settings.';
   }
@@ -294,6 +367,11 @@ function describeError(Anthropic, err) {
     return 'Too many requests just now — wait a moment and try again.';
   }
   if (err instanceof Anthropic.BadRequestError) {
+    // An organisation admin can switch web fetch off in the Claude Console.
+    if (withLink && err.error?.error?.type === 'invalid_request_error' && /web.?fetch/i.test(err.message)) {
+      return 'Your Anthropic account has web fetch turned off, so it can\'t read links. '
+        + 'Turn it on under Capabilities in the Claude Console, or paste a screenshot instead.';
+    }
     // Also what an account with no credit gets back.
     return "Claude couldn't take that request. Check your Anthropic account has credit, "
       + 'or try fewer or smaller images.';

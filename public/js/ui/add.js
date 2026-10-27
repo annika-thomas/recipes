@@ -17,7 +17,7 @@ import { openSheet, toast } from './sheet.js';
 import { openEditor } from './editor.js';
 import { field, input, textarea } from './bits.js';
 import { parseRecipeText } from '../util/parseRecipe.js';
-import { hasApiKey, readRecipe, imageForClaude, MAX_IMAGES } from '../backends/claude.js';
+import { hasApiKey, readRecipe, imageForClaude, findLinks, MAX_IMAGES } from '../backends/claude.js';
 import { openClaudeKeySheet } from './settings.js';
 
 export function openAddSheet({ onSaved } = {}) {
@@ -26,7 +26,7 @@ export function openAddSheet({ onSaved } = {}) {
     body: el('div',
       option('text', 'Paste a recipe',
         hasApiKey()
-          ? 'Text, screenshots or a photo of the page. Claude picks out the ingredients and steps for you.'
+          ? 'A link, text, screenshots or a photo of the page. Claude picks out the ingredients and steps for you.'
           : 'From a message, a website, a note — anywhere. It picks out the ingredients and steps for you.',
         () => { sheet.close(); openPasteSheet(onSaved); }),
 
@@ -50,7 +50,7 @@ export function openPasteSheet(onSaved, prefill = '') {
 
   const body = textarea({
     placeholder: useClaude
-      ? 'Paste the recipe — text, or a screenshot straight from the clipboard.'
+      ? 'Paste the recipe — text, a link to it, or a screenshot straight from the clipboard.'
       : 'Paste the whole thing — title, ingredients, method, however it came.',
     rows: 12,
     value: prefill,
@@ -124,7 +124,7 @@ export function openPasteSheet(onSaved, prefill = '') {
       field('Source', sourceInput),
       useClaude
         ? el('p.tiny.muted', { style: { lineHeight: '1.55', margin: '2px 2px 0' } },
-          'Claude reads the text and any images and fills in the form. '
+          'Claude reads the text, any images, and the page behind a link, and fills in the form. '
           + "It's sent to Anthropic with your API key; whatever it gets wrong, you can fix on the next screen.")
         : el('p.tiny.muted', { style: { lineHeight: '1.55', margin: '2px 2px 0' } },
           'Headings like ',
@@ -163,20 +163,26 @@ export function openPasteSheet(onSaved, prefill = '') {
 
   button.onclick = async () => {
     const text = body.value.trim();
+    const links = findLinks(text);
 
     if (useClaude) {
-      if (!images.length && text.length < 15) {
-        toast('Paste a bit more than that, or add a screenshot.', { bad: true });
+      if (!images.length && !links.length && text.length < 15) {
+        toast('Paste a bit more than that, a link, or a screenshot.', { bad: true });
         body.focus();
         return;
       }
 
       button.disabled = true;
-      button.textContent = 'Reading…';
+      button.textContent = links.length ? 'Reading the page…' : 'Reading…';
       try {
         const encoded = await Promise.all(images.map((image) => imageForClaude(image.file)));
         const parsed = await readRecipe({ text, images: encoded });
-        if (images.length) parsed.sourceType = 'photo';
+        if (links.length) {
+          parsed.sourceType = 'link';
+          parsed.sourceUrl = parsed.sourceUrl || links[0];
+        } else if (images.length) {
+          parsed.sourceType = 'photo';
+        }
         finish(parsed, { text, warning: claudeNote(parsed) });
       } catch (err) {
         toast(err.message, { bad: true });
@@ -186,6 +192,10 @@ export function openPasteSheet(onSaved, prefill = '') {
       return;
     }
 
+    if (links.length && text === links[0]) {
+      toast('Reading a link needs Claude — tap Connect Claude below, or paste the recipe text.', { bad: true });
+      return;
+    }
     if (text.length < 15) {
       toast('Paste a bit more than that.', { bad: true });
       body.focus();

@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { toDraft, buildContent, RECIPE_SCHEMA } from '../public/js/backends/claude.js';
+import { toDraft, buildContent, findLinks, RECIPE_SCHEMA } from '../public/js/backends/claude.js';
 import { CATEGORY_IDS } from '../public/js/util/recipe.js';
 
 test('a full answer becomes an editor draft', () => {
@@ -97,4 +97,21 @@ test('the schema offers exactly the app categories and requires every field', ()
   );
   const ingredient = RECIPE_SCHEMA.properties.ingredients.items;
   assert.deepEqual([...ingredient.required].sort(), Object.keys(ingredient.properties).sort());
+});
+
+test('links are picked out of pasted text, without trailing punctuation', () => {
+  assert.deepEqual(findLinks('Try this: https://example.com/pasta?x=1. So good'), ['https://example.com/pasta?x=1']);
+  assert.deepEqual(findLinks('(https://a.com/b) and https://a.com/b'), ['https://a.com/b']);
+  assert.deepEqual(findLinks('no links here, www.example.com'), []);
+});
+
+test('a bare link is sent as a link to read', () => {
+  const [only] = buildContent({ text: 'https://example.com/lasagne' });
+  assert.match(only.text, /^Read the recipe at this link/);
+  assert.match(only.text, /https:\/\/example\.com\/lasagne/);
+});
+
+test('a page address only survives if it is a web address', () => {
+  assert.equal(toDraft({ sourceUrl: 'https://example.com/r' }).sourceUrl, 'https://example.com/r');
+  assert.equal(toDraft({ sourceUrl: 'javascript:alert(1)' }).sourceUrl, null);
 });

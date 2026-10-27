@@ -259,6 +259,15 @@ document.addEventListener('visibilitychange', async () => {
 
   if ('serviceWorker' in navigator) {
     // Registered after first paint so it never delays the app appearing.
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // updateViaCache 'none' so checking for a new version always asks the
+    // server. A home-screen app on iOS is often resumed rather than relaunched,
+    // so check again whenever it comes back to the front.
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then((registration) => {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') registration.update().catch(() => {});
+        });
+      })
+      .catch(() => {});
   }
 })();

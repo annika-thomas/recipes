@@ -10,7 +10,7 @@ import { openSheet, confirmSheet, toast } from './sheet.js';
 import { forgetPerson } from './gate.js';
 import { pluralise } from '../util/format.js';
 import { banner, field, input } from './bits.js';
-import { getApiKey, setApiKey } from '../backends/claude.js';
+import { getApiKey, setApiKey, checkApiKey } from '../backends/claude.js';
 import { storageEstimate } from '../backends/photos.js';
 import { persistence } from '../backends/persist.js';
 
@@ -120,7 +120,7 @@ export function renderSettings({ onSignedOut, rerender }) {
             el('h4', { text: 'Read recipes with Claude' }),
             el('p', {
               text: getApiKey()
-                ? 'Connected. Pasted text and screenshots are read by Claude.'
+                ? 'Connected. Pasted text, links and screenshots are read by Claude.'
                 : 'Add an Anthropic API key to read screenshots, photos and messy text.',
             })),
           svg(ICONS.sparkle, { size: 18 })),
@@ -264,7 +264,7 @@ export function openClaudeKeySheet({ onDone } = {}) {
     title: 'Read recipes with Claude',
     body: el('div',
       el('p', { style: { lineHeight: '1.55', margin: '0 2px 14px' } },
-        'Paste a screenshot, a photo of a cookbook page, or a wall of text, and Claude turns it '
+        'Paste a link, a screenshot, a photo of a cookbook page, or a wall of text, and Claude turns it '
         + 'into the recipe form. It needs an API key from ',
         el('a', { href: 'https://console.anthropic.com/settings/keys', target: '_blank', rel: 'noopener', text: 'console.anthropic.com' }),
         '.'),
@@ -279,7 +279,7 @@ export function openClaudeKeySheet({ onDone } = {}) {
   setTimeout(() => keyInput.focus(), 200);
 
   save.classList.add('btn-block');
-  save.onclick = () => {
+  save.onclick = async () => {
     const key = keyInput.value.trim();
     if (!key) {
       toast('Paste the key first.', { bad: true });
@@ -290,12 +290,24 @@ export function openClaudeKeySheet({ onDone } = {}) {
       toast("That doesn't look like an Anthropic key — they start with sk-ant-.", { bad: true });
       return;
     }
+
+    save.disabled = true;
+    save.textContent = 'Checking…';
+    try {
+      await checkApiKey(key);
+    } catch (err) {
+      toast(err.message, { bad: true });
+      save.disabled = false;
+      save.textContent = 'Save key';
+      return;
+    }
+
     if (!setApiKey(key)) {
       toast("This browser won't store it — site data may be blocked.", { bad: true });
       return;
     }
     sheet.close();
-    toast('Saved. Pasted recipes will be read by Claude.');
+    toast('Key works and is saved. Pasted recipes and links will be read by Claude.');
     onDone?.();
   };
 
