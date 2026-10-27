@@ -9,7 +9,8 @@ import {
 import { openSheet, confirmSheet, toast } from './sheet.js';
 import { forgetPerson } from './gate.js';
 import { pluralise } from '../util/format.js';
-import { banner } from './bits.js';
+import { banner, field, input } from './bits.js';
+import { getApiKey, setApiKey } from '../backends/claude.js';
 import { storageEstimate } from '../backends/photos.js';
 import { persistence } from '../backends/persist.js';
 
@@ -114,6 +115,16 @@ export function renderSettings({ onSignedOut, rerender }) {
             el('p', { text: 'Add recipes from a backup file — how you move them to another device.' })),
           svg(ICONS.share, { size: 18 })) : null,
 
+        el('button.setting', { type: 'button', onclick: () => openClaudeKeySheet({ onDone: rerender }) },
+          el('div.grow',
+            el('h4', { text: 'Read recipes with Claude' }),
+            el('p', {
+              text: getApiKey()
+                ? 'Connected. Pasted text and screenshots are read by Claude.'
+                : 'Add an Anthropic API key to read screenshots, photos and messy text.',
+            })),
+          svg(ICONS.sparkle, { size: 18 })),
+
         el('button.setting', { type: 'button', onclick: () => openAbout(onDevice) },
           el('div.grow',
             el('h4', { text: 'How this works' }),
@@ -196,7 +207,11 @@ function openAbout(onDevice) {
   openSheet({
     title: 'How this works',
     body: el('div', { style: { lineHeight: '1.6', fontSize: '14.5px' } },
-      para('Pasting a recipe',
+      para('Reading with Claude',
+        'If you add an Anthropic API key, pasted text and any screenshots or photos are sent to '
+        + 'Claude, which reads them into the form. The key is kept in this browser only and goes '
+        + 'to Anthropic and nowhere else; each recipe read is billed to that key, usually a few cents.'),
+      para('Pasting a recipe without Claude',
         'The text is read here in your browser — nothing is sent anywhere and there is no '
         + 'waiting. It looks for the things recipes always have: quantities and units at the '
         + 'start of a line, numbered steps, headings like Ingredients and Method. Give it any '
@@ -220,6 +235,80 @@ function openAbout(onDevice) {
           'On your own server, shared between both of you. Anything either of you adds shows up '
           + 'for the other.')),
   });
+}
+
+/* --------------------------------------------------------------- claude --- */
+
+/**
+ * Where the API key goes in. Kept in this browser's storage next to the
+ * recipes, and sent only to Anthropic — there's no server in this copy of the
+ * app that could hold it instead.
+ */
+export function openClaudeKeySheet({ onDone } = {}) {
+  const existing = getApiKey();
+  const keyInput = input({
+    type: 'password',
+    autocomplete: 'off',
+    spellcheck: false,
+    placeholder: existing ? 'Saved — paste a new one to replace it' : 'sk-ant-…',
+  });
+
+  const save = el('button.btn.btn-primary', { type: 'button', text: 'Save key' });
+  const remove = existing ? el('button.btn.btn-ghost', {
+    type: 'button',
+    text: 'Remove',
+    style: { color: 'var(--danger)' },
+  }) : null;
+
+  const sheet = openSheet({
+    title: 'Read recipes with Claude',
+    body: el('div',
+      el('p', { style: { lineHeight: '1.55', margin: '0 2px 14px' } },
+        'Paste a screenshot, a photo of a cookbook page, or a wall of text, and Claude turns it '
+        + 'into the recipe form. It needs an API key from ',
+        el('a', { href: 'https://console.anthropic.com/settings/keys', target: '_blank', rel: 'noopener', text: 'console.anthropic.com' }),
+        '.'),
+      field('API key', keyInput),
+      el('p.tiny.muted', { style: { lineHeight: '1.55', margin: '2px 2px 0' } },
+        'The key stays in this browser on this device and is sent only to Anthropic. Each recipe '
+        + 'read is billed to it. Anyone with this phone unlocked could use it, so a key with a '
+        + 'spending limit is a good idea.')),
+    footer: el('div.row', { style: { gap: '8px' } }, remove, el('div.grow', save)),
+  });
+
+  setTimeout(() => keyInput.focus(), 200);
+
+  save.classList.add('btn-block');
+  save.onclick = () => {
+    const key = keyInput.value.trim();
+    if (!key) {
+      toast('Paste the key first.', { bad: true });
+      keyInput.focus();
+      return;
+    }
+    if (!key.startsWith('sk-ant-')) {
+      toast("That doesn't look like an Anthropic key — they start with sk-ant-.", { bad: true });
+      return;
+    }
+    if (!setApiKey(key)) {
+      toast("This browser won't store it — site data may be blocked.", { bad: true });
+      return;
+    }
+    sheet.close();
+    toast('Saved. Pasted recipes will be read by Claude.');
+    onDone?.();
+  };
+
+  if (remove) {
+    remove.onclick = () => {
+      setApiKey(null);
+      sheet.close();
+      toast('Removed. Pasting goes back to the built-in reader.');
+      onDone?.();
+    };
+  }
+
+  return sheet;
 }
 
 /* ----------------------------------------------------- not losing it --- */

@@ -8,14 +8,21 @@ when you made it, how it went, and what to do differently next time.
 
 **Live:** https://annika-thomas.github.io/recipes/
 
-No accounts, no API keys, nothing to sign up for. Everything happens in the
-browser and your recipes stay on your device.
+No accounts, nothing to sign up for. Everything happens in the browser and your
+recipes stay on your device. Add your own Anthropic API key and pasted recipes —
+including screenshots and photos of cookbook pages — are read by Claude.
 
 ---
 
 ## What it does
 
-**Paste anything recipe-shaped.** A message from a friend, a block of text off a
+**Paste a screenshot, a photo, or a wall of text.** With a Claude API key set
+(**Settings → Read recipes with Claude**), the paste box takes images too: paste
+a screenshot straight from the clipboard, or add photos of a cookbook page or a
+handwritten card. Claude reads the text and the images together and fills in the
+form, and says at the top what it couldn't read or had to guess.
+
+**No key? Paste anything recipe-shaped.** A message from a friend, a block of text off a
 website, a note to yourself. It reads the quantities, units, ingredients and
 steps out of it and hands you a filled-in form. Headings like *Ingredients* and
 *Method* help but aren't required — numbered steps and quantities at the start
@@ -97,7 +104,28 @@ That needs a server — see [Sharing between two phones](#sharing-between-two-ph
 
 ---
 
-## How the parsing works
+## Reading with Claude
+
+Turn it on under **Settings → Read recipes with Claude** with an API key from
+[console.anthropic.com](https://console.anthropic.com/settings/keys).
+
+- The key is stored in this browser, on this device, next to the recipes. It's
+  sent to `api.anthropic.com` and nowhere else — the Pages copy of the app has no
+  server that could hold it instead. Anyone using your unlocked phone could use
+  it, so give the key a spending limit in the Anthropic console.
+- Each read is one request to Claude Opus 5.5 with the pasted text and up to six
+  images (shrunk to ~1500px first), billed to your key — typically a few cents.
+- It's asked to transcribe, never invent: a quantity that isn't in the source
+  comes back blank. The answer is constrained to the app's recipe shape, so it
+  drops into the same editor the parser fills.
+- If Claude can't be reached or the key is wrong, it says so and leaves what you
+  pasted in the box. Remove the key and pasting goes back to the parser below.
+
+The code is `public/js/backends/claude.js`: the prompt, the output schema, and
+the request. The Anthropic SDK is loaded from jsDelivr the first time it's
+used, pinned to an exact version.
+
+## How the parsing works (without Claude)
 
 Worth knowing, because it explains what it's good and bad at.
 
@@ -148,8 +176,8 @@ anything already done, so it's safe to re-run.
 Then take a backup from the Pages version and open it on the new one. Nothing
 you've typed in is lost.
 
-There's no API key anywhere in this, on either version — the parser runs in
-the browser in both.
+The server needs no API key — the parser runs in the browser in both versions,
+and the optional Claude reader uses the key you enter on each device.
 
 ---
 
@@ -180,6 +208,7 @@ npm run dev         # http://localhost:8787
 | Colours, spacing, the whole look | `public/css/app.css` — the `:root` block at the top is the palette, and the dark theme mirrors it |
 | The categories | `CATEGORIES` in `public/js/util/recipe.js`, and the matching emoji in `public/js/ui/icons.js` |
 | How pasted text is read | `public/js/util/parseRecipe.js` — units, step verbs and the scoring all live at the top |
+| What Claude is told, and the model | `SYSTEM` and `MODEL` in `public/js/backends/claude.js` |
 | Which staples "add the usual" adds | `DEFAULT_STAPLES` in `public/js/util/recipe.js` |
 | How recipes are sorted by default | `SORTS` and `sortRecipes` in `public/js/ui/library.js` |
 | Storage locations (fridge, freezer…) | `LOCATIONS` in `public/js/util/recipe.js` |
@@ -198,7 +227,8 @@ public/                    the app: a static PWA, no build step
   js/backends/local.js     the whole box in localStorage — what Pages runs
   js/backends/photos.js    pictures, in IndexedDB, shrunk on the way in
   js/backends/server.js    the same surface over HTTP — what Cloudflare runs
-  js/util/parseRecipe.js   pasted text -> a recipe
+  js/backends/claude.js    pasted text and images -> a recipe, via Claude
+  js/util/parseRecipe.js   pasted text -> a recipe, no key needed
   js/util/recipe.js        what a recipe IS — imported by both halves
   js/util/match.js         ingredient matching — imported by both halves
   js/ui/                   one file per screen, unaware of which backend is live
