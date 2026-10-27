@@ -12,7 +12,7 @@
  * spinner. The one exception is photos, which are immutable once written.
  */
 
-const SHELL = 'kitchen-shell-v4';
+const SHELL = 'kitchen-shell-v5';
 const PHOTOS = 'kitchen-photos-v1';
 
 /** How long to wait on a slow network before opening from the cache instead. */
@@ -28,7 +28,9 @@ const ASSETS = [
   './js/main.js',
   './manifest.webmanifest',
   './assets/icon.svg',
-  './assets/fonts/figtree-latin.woff2',
+  './assets/fonts/franklin-latin.woff2',
+  './assets/fonts/serif-latin.woff2',
+  './assets/fonts/slab-700-latin.woff2',
 ];
 
 const SHELL_URL = new URL('./index.html', self.registration.scope).pathname;

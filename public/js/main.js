@@ -91,7 +91,9 @@ function draw() {
       el('span.grow'),
     );
   } else {
-    titleNode.textContent = TABS.find((t) => t.id === route.name)?.title || 'Kitchen';
+    titleNode.textContent = route.name === 'recipes' && state.person
+      ? `${state.person}’s Recipe Box`
+      : TABS.find((t) => t.id === route.name)?.title || 'Kitchen';
     appbar.append(titleNode);
   }
 

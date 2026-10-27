@@ -1,7 +1,8 @@
 /**
  * The recipe box itself.
  *
- * Search, then category chips, then the list. The sort is deliberately not
+ * Search, then category chips, then a row of what was added most recently,
+ * then every recipe as a grid of photos. The sort is deliberately not
  * "newest first": what you want on a Tuesday is usually something you've made
  * before and liked, so rated-and-cooked floats up, and the sort control lets
  * you say otherwise.
@@ -116,13 +117,13 @@ export function renderLibrary({ onOpen, rerender }) {
       .filter((category) => counts.get(category.id))
       .map((category) => chip(category.id, category.label, counts.get(category.id))));
 
-  /* List */
+  /* Grid */
   const list = sorted.length
-    ? el('div.recipe-list', sorted.map((recipe) => recipeCard(recipe, onOpen)))
+    ? el('div.recipe-grid', sorted.map((recipe) => recipeCard(recipe, onOpen)))
     : emptyResult();
 
   return {
-    body: el('div', searchbar, chips, listHeader(sorted.length, rerender), list),
+    body: el('div', searchbar, chips, recentRow(onOpen), listHeader(sorted.length, rerender), list),
     focus: () => {
       if (!view.query) return;
       searchInput.focus();
@@ -131,15 +132,33 @@ export function renderLibrary({ onOpen, rerender }) {
   };
 }
 
+/**
+ * The last few recipes added, as a row you swipe along — only on the
+ * unfiltered box, and only once there are enough that the grid below
+ * wouldn't just repeat it.
+ */
+function recentRow(onOpen) {
+  if (view.query || view.category || state.recipes.length < 5) return null;
+  const recent = [...state.recipes]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 8);
+  return el('div',
+    el('div.section-title', { text: 'Recently added', style: { marginTop: '18px' } }),
+    el('div.carousel', recent.map((recipe) => recipeCard(recipe, onOpen))));
+}
+
 function listHeader(count, rerender) {
   if (!state.recipes.length) return null;
   const sortLabel = SORTS.find((s) => s.id === view.sort)?.label || '';
 
-  return el('div.row-between', { style: { padding: '2px 2px 12px' } },
-    el('span.tiny.muted', { text: `${count} ${count === 1 ? 'recipe' : 'recipes'}` }),
-    el('button.tiny', {
+  let heading = 'All recipes';
+  if (view.query) heading = `${count} ${count === 1 ? 'match' : 'matches'}`;
+  else if (view.category) heading = state.categories.find((c) => c.id === view.category)?.label || heading;
+
+  return el('div.list-head',
+    el('h2.section-title', { text: heading }),
+    el('button', {
       type: 'button',
-      style: { color: 'var(--accent)', fontWeight: '700' },
       onclick: () => openSortSheet(rerender),
     }, sortLabel, ' ▾'));
 }
